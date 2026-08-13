@@ -2,7 +2,7 @@
 
 A deterministic brand-name generation and evaluation engine. Generates pronounceable, brandable names and scores any name — generated or typed in — across multiple explainable, algorithmic dimensions. Runs entirely in the browser: no backend, no database, no AI required for any score.
 
-**Live demo:** _add your Cloudflare Pages URL here after deploying_
+**Live demo:** https://domain.brandlab.workers.dev/
 
 ## Philosophy
 
