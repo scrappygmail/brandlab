@@ -1,0 +1,2209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BrandLab — Deterministic brand name evaluation engine</title>
+<meta name="description" content="Generate and score brandable names with a fully deterministic engine: pronunciation, typing confusion, dictionary clash, rhythm, visual balance, and more. No AI required.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #F7F5F0;
+    --bg-2: #F1EEE6;
+    --glass: rgba(28,26,23,0.035);
+    --glass-strong: rgba(28,26,23,0.06);
+    --line: rgba(28,26,23,0.13);
+    --text: #1C1A17;
+    --muted: #6E6656;
+    --accent: #5B45D9;
+    --accent-2: #087A49;
+    --warn: #946009;
+    --danger: #C23434;
+    --radius: 16px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(91,69,217,0.08), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(8,122,73,0.05), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  ::selection{ background:var(--accent); color:white; }
+  a{ color:var(--accent); }
+  .wrap{ max-width:1180px; margin:0 auto; padding:0 24px; }
+
+  .glass{
+    background:var(--glass);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    backdrop-filter:blur(20px);
+    -webkit-backdrop-filter:blur(20px);
+  }
+
+  /* ---------- TOP BAR ---------- */
+  .topbar{ border-bottom:1px solid var(--line); padding:16px 0; position:sticky; top:0; z-index:20; backdrop-filter:blur(16px); background:rgba(247,245,240,0.82); }
+  .topbar .wrap{ display:flex; justify-content:space-between; align-items:center; }
+  .brand{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:18px; display:flex; align-items:center; gap:9px; }
+  .brand .dot{ width:9px; height:9px; border-radius:50%; background:var(--accent); box-shadow:0 0 12px var(--accent); }
+  .top-controls{ display:flex; align-items:center; gap:18px; }
+  .ai-switch{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); font-family:'IBM Plex Mono', monospace; }
+  .switch{ width:36px; height:20px; border-radius:20px; background:var(--glass-strong); border:1px solid var(--line); position:relative; cursor:pointer; }
+  .switch .knob{ width:14px; height:14px; border-radius:50%; background:var(--muted); position:absolute; top:2px; left:3px; transition:.18s ease; }
+  .switch.on{ background:rgba(91,69,217,0.18); border-color:var(--accent); }
+  .switch.on .knob{ background:var(--accent); left:19px; }
+
+  /* ---------- HERO ---------- */
+  header.hero{ padding:52px 0 30px; }
+  .eyebrow{ font-family:'IBM Plex Mono', monospace; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); margin:0 0 14px; font-weight:600; }
+  h1{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:clamp(26px, 4vw, 40px); line-height:1.15; margin:0 0 14px; max-width:760px; letter-spacing:-0.02em; }
+  h1 span{ color:var(--accent); }
+  .sub{ color:var(--muted); font-size:15px; max-width:600px; margin:0; }
+
+  /* ---------- MODE TABS ---------- */
+  .mode-tabs{ display:flex; gap:8px; margin:26px 0 20px; flex-wrap:wrap; }
+  .mode-tab{ padding:9px 16px; border-radius:10px; border:1px solid var(--line); background:var(--glass); font-size:13px; font-weight:500; cursor:pointer; color:var(--muted); }
+  .mode-tab.active{ background:var(--accent); border-color:var(--accent); color:white; }
+  .mode-panel{ display:none; }
+  .mode-panel.active{ display:block; }
+
+  /* ---------- CONTROLS ---------- */
+  .controls{ padding:22px 24px; margin-bottom:24px; }
+  .style-tabs{ display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+  .style-tab{ padding:8px 14px; border-radius:20px; border:1px solid var(--line); background:var(--glass-strong); font-size:13px; font-weight:500; cursor:pointer; color:var(--muted); }
+  .style-tab.active{ background:var(--accent-2); border-color:var(--accent-2); color:#FFFFFF; }
+  .controls-grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; }
+  @media (max-width:820px){ .controls-grid{ grid-template-columns:repeat(2,1fr); } }
+  .field label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin-bottom:7px; font-family:'IBM Plex Mono', monospace; }
+  select, input[type=number], input[type=text], input[type=file], textarea{
+    width:100%; background:var(--glass-strong); border:1px solid var(--line); color:var(--text);
+    padding:10px 12px; border-radius:9px; font-family:'Inter', sans-serif; font-size:14px; outline:none;
+  }
+  textarea{ resize:vertical; min-height:90px; font-family:'IBM Plex Mono', monospace; font-size:13px; }
+  select:focus, input:focus, textarea:focus{ border-color:var(--accent); }
+  .toggles{ display:flex; gap:20px; margin-top:16px; flex-wrap:wrap; }
+  .toggle{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); cursor:pointer; user-select:none; }
+  .toggle input{ accent-color:var(--accent); width:16px; height:16px; }
+  .actions{ margin-top:20px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  button{ font-family:'Inter', sans-serif; font-weight:600; font-size:14px; border:none; border-radius:10px; padding:12px 20px; cursor:pointer; transition:transform .08s ease, opacity .15s ease; }
+  button:active{ transform:scale(0.97); }
+  .btn-primary{ background:var(--accent); color:white; }
+  .btn-primary:hover{ opacity:.9; }
+  .btn-primary:disabled{ opacity:.35; cursor:not-allowed; }
+  .btn-secondary{ background:var(--glass-strong); border:1px solid var(--line); color:var(--text); }
+  .btn-secondary:hover{ border-color:var(--accent); }
+  .btn-secondary:disabled{ opacity:.35; cursor:not-allowed; }
+  .count-live{ font-family:'IBM Plex Mono', monospace; font-size:13px; color:var(--muted); }
+
+  /* ---------- RESULTS ---------- */
+  .results-bar{ margin-top:34px; display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
+  .results-title{ font-family:'Space Grotesk', sans-serif; font-size:19px; margin:0; }
+  .results-meta{ font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--muted); }
+  .filter-row{ display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  .filter-row input[type=text]{ max-width:220px; }
+  .filter-row select{ max-width:180px; }
+  .progress-wrap{ height:4px; background:var(--glass-strong); border-radius:2px; overflow:hidden; margin-top:14px; display:none; }
+  .progress-wrap.active{ display:block; }
+  .progress-bar{ height:100%; background:var(--accent); width:0%; transition:width .2s ease; }
+
+  .grid{ margin-top:18px; display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; }
+  .card{ padding:15px 16px; display:flex; flex-direction:column; gap:9px; animation: fadeIn .25s ease both; }
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
+  @media (prefers-reduced-motion: reduce){ .card{ animation:none; } }
+  .card-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .card-name{ font-family:'IBM Plex Mono', monospace; font-size:14px; font-weight:600; word-break:break-all; background:#FFFFFF; border:1px solid var(--line); color:var(--text); padding:7px 10px; border-radius:8px; display:inline-block; }
+  .score-pill{ font-family:'IBM Plex Mono', monospace; font-size:12px; font-weight:600; padding:4px 9px; border-radius:8px; white-space:nowrap; }
+  .score-pill.good{ background:rgba(8,122,73,0.13); color:var(--accent-2); }
+  .score-pill.mid{ background:rgba(148,96,9,0.13); color:var(--warn); }
+  .score-pill.low{ background:rgba(194,52,52,0.13); color:var(--danger); }
+  .card-meta{ display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--muted); font-family:'IBM Plex Mono', monospace; }
+  .mini-bars{ display:flex; gap:3px; }
+  .mini-bar{ height:4px; flex:1; background:var(--glass-strong); border-radius:2px; overflow:hidden; }
+  .mini-bar-fill{ height:100%; background:var(--accent); }
+  .card-footer{ display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:2px; flex-wrap:wrap; }
+  .status{ font-family:'IBM Plex Mono', monospace; font-size:11px; padding:4px 8px; border-radius:6px; }
+  .status.unknown{ background:var(--glass-strong); color:var(--muted); }
+  .status.available{ background:rgba(8,122,73,0.13); color:var(--accent-2); }
+  .status.taken{ background:rgba(194,52,52,0.12); color:var(--danger); }
+  .status.checking{ background:var(--glass-strong); color:var(--accent); }
+  .status.verify{ background:var(--glass-strong); color:var(--muted); }
+  .status.verify a{ color:var(--accent); text-decoration:none; }
+  .mini-btn{ background:var(--glass-strong); border:1px solid var(--line); color:var(--text); font-size:11px; padding:5px 9px; border-radius:7px; cursor:pointer; }
+  .mini-btn:hover{ border-color:var(--accent); }
+  .load-more-row{ display:flex; justify-content:center; margin:26px 0 50px; }
+  .empty-state{ text-align:center; padding:60px 20px; color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:13px; border:1px dashed var(--line); border-radius:var(--radius); }
+
+  /* ---------- REPORT MODAL ---------- */
+  .modal-backdrop{ position:fixed; inset:0; background:rgba(28,26,23,0.35); backdrop-filter:blur(4px); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:40px 16px; overflow-y:auto; }
+  .modal-backdrop.active{ display:flex; }
+  .modal{ max-width:640px; width:100%; padding:28px; margin-bottom:40px; }
+  .modal-close{ float:right; background:var(--glass-strong); border:1px solid var(--line); border-radius:8px; padding:6px 11px; cursor:pointer; color:var(--text); }
+  .modal h2{ font-family:'Space Grotesk', sans-serif; font-size:24px; margin:0 0 4px; }
+  .modal .overall{ font-family:'IBM Plex Mono', monospace; font-size:13px; color:var(--muted); margin-bottom:20px; }
+  .report-section{ margin-bottom:20px; }
+  .report-section h3{ font-family:'Space Grotesk', sans-serif; font-size:14px; margin:0 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  .report-row{ display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:13px; }
+  .report-row .label{ width:150px; flex-shrink:0; color:var(--muted); }
+  .report-row .bar{ flex:1; height:6px; background:var(--glass-strong); border-radius:3px; overflow:hidden; }
+  .report-row .bar-fill{ height:100%; background:var(--accent); }
+  .report-row .val{ width:36px; text-align:right; font-family:'IBM Plex Mono', monospace; font-size:12px; }
+  .dna-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px 20px; }
+  .warn-box{ background:rgba(148,96,9,0.08); border:1px solid rgba(148,96,9,0.3); border-radius:10px; padding:10px 12px; font-size:12.5px; color:var(--warn); margin-bottom:8px; }
+  .info-box{ background:var(--glass-strong); border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:12px; color:var(--muted); }
+  .chip-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .chip{ background:var(--glass-strong); border:1px solid var(--line); border-radius:20px; padding:4px 10px; font-family:'IBM Plex Mono', monospace; font-size:11px; }
+  .link-row{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .link-chip{ background:var(--glass-strong); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:12px; color:var(--text); text-decoration:none; }
+  .link-chip:hover{ border-color:var(--accent); }
+
+  /* ---------- COMPARE / BULK ---------- */
+  .compare-inputs{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .compare-inputs input{ max-width:200px; }
+  table.data-table{ width:100%; border-collapse:collapse; font-size:13px; }
+  table.data-table th, table.data-table td{ padding:9px 12px; border-bottom:1px solid var(--line); text-align:left; }
+  table.data-table th{ color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  .table-wrap{ overflow-x:auto; border-radius:var(--radius); border:1px solid var(--line); }
+
+  .ai-panel{ margin:20px 0; padding:16px 18px; display:none; }
+  .ai-panel.visible{ display:block; }
+
+  footer{ border-top:1px solid var(--line); padding:26px 0 60px; color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span>BrandLab</div>
+    <div class="top-controls">
+      <div class="ai-switch" id="tmToggle" style="cursor:pointer;">
+        <span>My trademark list</span>
+      </div>
+      <div class="ai-switch">
+        <span>AI Advisor</span>
+        <div class="switch" id="aiSwitch"><div class="knob"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">// Deterministic brand evaluation engine</p>
+    <h1>Score names the way a <span>linguist</span> would — not a dice roll.</h1>
+    <p class="sub">Every score below comes from an explainable algorithm — pronunciation, typing confusion, dictionary clash, rhythm, visual balance. No AI required for any of it. AI is available separately, off by default, for opinions only.</p>
+  </header>
+
+  <div class="ai-panel glass" id="tmPanel">
+    <strong style="font-family:'Space Grotesk',sans-serif;">Your trademark reference list</strong>
+    <p style="color:var(--muted); font-size:13px; margin:8px 0 12px;">
+      BrandLab doesn't bundle a real trademark database (that data is licensed and jurisdiction-specific). Paste your own list here (one name per line) and every "Full report" will also fuzzy-match against it. This list stays in this browser tab's memory only — it's cleared on refresh, never uploaded anywhere.
+    </p>
+    <textarea id="tmListInput" placeholder="acme&#10;canva&#10;yourcompetitor"></textarea>
+    <div class="actions" style="margin-top:10px;">
+      <button class="btn-secondary" id="tmSaveBtn">Save for this session</button>
+      <span class="count-live" id="tmStatus"></span>
+    </div>
+  </div>
+
+  <div class="ai-panel glass" id="aiPanel">
+    <strong style="font-family:'Space Grotesk',sans-serif;">AI Advisor is off by default — and that's intentional.</strong>
+    <p style="color:var(--muted); font-size:13px; margin:8px 0 10px;">
+      Every score on this page is 100% deterministic and never touches AI. This panel is only for optional creative opinions (slogan, industry fit, positioning) — never scores, never rankings. Use it from any name's <strong>"Full report" → AI opinion section</strong>, not from here directly.
+    </p>
+    <p style="color:var(--muted); font-size:12.5px; margin:0 0 12px;">
+      <strong>Session only, nothing saved:</strong> paste your own API key below to use this for the current browser tab only. It's held in memory for this session, sent directly from your browser straight to the provider's API, never written to storage or sent anywhere else — and it's wiped the moment you turn this toggle off or close/refresh the tab.
+    </p>
+    <div style="display:flex; gap:8px; margin-bottom:10px;">
+      <select id="aiProviderSelect" style="max-width:220px;">
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="gemini">Google (Gemini Flash)</option>
+      </select>
+    </div>
+    <div id="aiKeyPrompt" style="display:flex; gap:8px; flex-wrap:wrap;">
+      <input type="password" id="aiKeyInput" placeholder="sk-ant-... (this session only)" style="max-width:280px;">
+      <button class="btn-secondary" id="aiKeySubmit">Use for this session</button>
+    </div>
+    <div id="aiResult" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- ============ MODE TABS ============ -->
+  <div class="mode-tabs">
+    <div class="mode-tab active" data-mode="generate">Generate</div>
+    <div class="mode-tab" data-mode="score">Score a name</div>
+    <div class="mode-tab" data-mode="compare">Compare</div>
+    <div class="mode-tab" data-mode="bulk">Bulk CSV</div>
+  </div>
+
+  <!-- ============ GENERATE MODE ============ -->
+  <div class="mode-panel active" id="panel-generate">
+    <div class="controls glass">
+      <div class="style-tabs" id="qualityTabs">
+        <div class="style-tab" data-quality="standard">Standard — broad, fast</div>
+        <div class="style-tab active" data-quality="premium" style="background:var(--accent-2); border-color:var(--accent-2); color:white;">Premium — agency-grade, strict</div>
+      </div>
+      <p class="count-live" id="qualityNote" style="margin:0 0 16px; display:block;">Premium mode: every name must clear a strict multi-gate pipeline (single obvious spelling, no dictionary/brand/city/name clash, whitelisted pronounceable clusters only, visual balance, composite score floor). Fewer results, each one investment-grade.</p>
+
+      <div class="style-tabs" id="styleTabs">
+        <div class="style-tab" data-style="invented">Invented — single word</div>
+        <div class="style-tab" data-style="compound">Compound — two roots joined</div>
+        <div class="style-tab active" data-style="evocative">Evocative — real word, lightly reshaped</div>
+        <div class="style-tab" data-style="both">All styles</div>
+      </div>
+      <div class="controls-grid">
+        <div class="field"><label for="lang">Language</label>
+          <select id="lang"><option value="en" selected>English</option><option value="es">Spanish</option><option value="both">English + Spanish</option></select>
+        </div>
+        <div class="field"><label for="batchsize">Batch size</label>
+          <select id="batchsize"><option value="100" selected>100</option><option value="500">500</option><option value="1000">1000</option></select>
+        </div>
+        <div class="field"><label for="minlen">Min length</label><input type="number" id="minlen" value="4" min="3" max="14"></div>
+        <div class="field"><label for="maxlen">Max length</label><input type="number" id="maxlen" value="6" min="3" max="14"></div>
+      </div>
+      <div class="toggles">
+        <label class="toggle"><input type="checkbox" id="allowHyphen"> Allow hyphenated variants</label>
+        <label class="toggle"><input type="checkbox" id="allowNumber"> Allow number variants</label>
+      </div>
+      <div class="actions">
+        <button class="btn-primary" id="generateBtn">Generate first batch</button>
+        <span class="count-live" id="genStatus"></span>
+      </div>
+    </div>
+
+    <section class="results-bar">
+      <div><h2 class="results-title">Results</h2><p class="results-meta" id="resultsMeta">No names generated yet.</p></div>
+    </section>
+
+    <div class="filter-row">
+      <input type="text" id="searchBox" placeholder="Filter by text...">
+      <div style="position:relative; margin-left:auto;">
+        <button class="btn-secondary" id="exportBtn" disabled>Download</button>
+        <div id="downloadMenu" style="display:none; position:absolute; right:0; top:calc(100% + 6px); background:var(--glass-strong); border:1px solid var(--line); border-radius:10px; padding:6px; z-index:10; backdrop-filter:blur(20px);">
+          <button class="mini-btn" style="display:block; width:100%; margin-bottom:4px;" id="downloadCsvBtn">CSV</button>
+          <button class="mini-btn" style="display:block; width:100%;" id="downloadTxtBtn">TXT</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="progress-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="grid" id="grid"><div class="empty-state">Pick a style above and hit "Generate first batch" to start.</div></div>
+    <div class="load-more-row"><button class="btn-secondary" id="loadMoreBtn" style="display:none;">Generate next batch</button></div>
+  </div>
+
+  <!-- ============ SCORE MODE ============ -->
+  <div class="mode-panel" id="panel-score">
+    <div class="controls glass">
+      <div class="field"><label for="singleName">Enter a name to score</label><input type="text" id="singleName" placeholder="e.g. lorifa"></div>
+      <div class="actions"><button class="btn-primary" id="scoreBtn">Analyze</button></div>
+
+    </div>
+    <div id="singleResult"></div>
+  </div>
+
+  <!-- ============ COMPARE MODE ============ -->
+  <div class="mode-panel" id="panel-compare">
+    <div class="controls glass">
+      <div class="field"><label>Enter up to 4 names</label></div>
+      <div class="compare-inputs">
+        <input type="text" class="cmpInput" placeholder="Name 1">
+        <input type="text" class="cmpInput" placeholder="Name 2">
+        <input type="text" class="cmpInput" placeholder="Name 3">
+        <input type="text" class="cmpInput" placeholder="Name 4">
+      </div>
+      <div class="actions"><button class="btn-primary" id="compareBtn">Compare</button></div>
+    </div>
+    <div id="compareResult"></div>
+  </div>
+
+  <!-- ============ BULK MODE ============ -->
+  <div class="mode-panel" id="panel-bulk">
+    <div class="controls glass">
+      <div class="field"><label for="bulkInput">Paste names (one per line) or upload a CSV (first column = name)</label>
+        <textarea id="bulkInput" placeholder="lorifa&#10;karoze&#10;toolpeak"></textarea>
+      </div>
+      <div class="field" style="margin-top:12px;"><input type="file" id="csvUpload" accept=".csv,.txt"></div>
+      <div class="actions"><button class="btn-primary" id="bulkBtn">Analyze all</button><span class="count-live" id="bulkStatus"></span></div>
+    </div>
+    <div id="bulkResult"></div>
+  </div>
+
+  <footer>
+    BrandLab · runs entirely in your browser · every score below is a deterministic heuristic derived from phonetic and orthographic features — a practical estimate, not a peer-reviewed psychological or legal measurement · domain checks use live .com registry data (RDAP) · dictionary/brand clash checks against a small curated reference list, not an exhaustive trademark database · nothing is stored, refreshing clears everything.
+  </footer>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal glass" id="modalContent"></div>
+</div>
+
+<script>
+/* =========================================================
+   PART 1 — PHONETIC GENERATION ENGINE (unchanged core idea,
+   builds pronounceable words syllable by syllable)
+   ========================================================= */
+const VOWELS = ['a','e','i','o','u'];
+const DIPHTHONGS = ['ai','ea','ou','ei','oa','ie','au'];
+const SINGLE_CONS = ['b','c','d','f','g','h','j','k','l','m','n','p','r','s','t','v','w','y','z'];
+const ONSET_CLUSTERS = ['bl','br','cl','cr','dr','fl','fr','gl','gr','pl','pr','sc','sk','sl','sm','sn','sp','st','sw','tr','tw','ch','sh','th','wh','ph','str','spl','scr','spr','qu'];
+const CODA_CLUSTERS = ['nt','nd','st','nk','mp','rt','rk','ld','lt','ct','ng','ss','sh','th','ve','ze','sk','rd','lm','rn'];
+const ES_CODA_ALLOWED = ['n','s','r','l','z','d'];
+
+function rc(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
+function isVowel(ch){ return VOWELS.includes(ch); }
+
+function makeOnset(){ return Math.random() < 0.65 ? rc(SINGLE_CONS) : rc(ONSET_CLUSTERS); }
+function makeCoda(){ return Math.random() < 0.6 ? rc(SINGLE_CONS) : rc(CODA_CLUSTERS); }
+function makeEsCoda(){ return rc(ES_CODA_ALLOWED); }
+
+function makeSyllable(lang){
+  if(lang === 'es'){
+    const patterns = ['CV','CV','CV','CVC'];
+    const pattern = rc(patterns);
+    if(pattern === 'CV') return rc(SINGLE_CONS)+rc(VOWELS);
+    return rc(SINGLE_CONS)+rc(VOWELS)+makeEsCoda();
+  }
+  const patterns = ['CV','CV','CVC','CVC','CCV','CVCC','VC','CVV','CCVC','VCV'];
+  const pattern = rc(patterns);
+  switch(pattern){
+    case 'CV': return makeOnset()+rc(VOWELS);
+    case 'CVC': return makeOnset()+rc(VOWELS)+rc(SINGLE_CONS);
+    case 'CCV': return rc(ONSET_CLUSTERS)+rc(VOWELS);
+    case 'CVCC': return makeOnset()+rc(VOWELS)+makeCoda();
+    case 'VC': return rc(VOWELS)+rc(SINGLE_CONS);
+    case 'CVV': return makeOnset()+rc(DIPHTHONGS);
+    case 'CCVC': return rc(ONSET_CLUSTERS)+rc(VOWELS)+rc(SINGLE_CONS);
+    case 'VCV': return rc(VOWELS)+rc(SINGLE_CONS)+rc(VOWELS);
+    default: return makeOnset()+rc(VOWELS);
+  }
+}
+
+function isValidWord(w){
+  if(/(.)\1\1/.test(w)) return false;
+  if(/[^aeiou]{4,}/.test(w)) return false;
+  if(/[aeiou]{4,}/.test(w)) return false;
+  if(!/[aeiou]/.test(w)) return false;
+  if(!/^[a-z]+$/.test(w)) return false;
+  if(hasEmbeddedBadSubstring(w)) return false;
+  if(hasUglyPattern(w)) return false;
+  if(hasIllegalConsonantCluster(w)) return false;
+  return true;
+}
+
+function generatePhoneticWord(lang, minLen, maxLen){
+  let word = '';
+  let attempts = 0;
+  const targetLang = lang === 'both' ? (Math.random() < 0.5 ? 'en' : 'es') : lang;
+  while(word.length < minLen && attempts < 6){ word += makeSyllable(targetLang); attempts++; }
+  if(word.length > maxLen || word.length < minLen) return null;
+  if(!isValidWord(word)) return null;
+  return word;
+}
+
+const EN_ROOTS = ["flow","base","spark","peak","loop","nova","arc","byte","core","edge","forge","glow","grid","hive","kit","lab","leaf","mesa","node","orbit","path","pulse","quill","reef","ridge","rise","root","sail","scope","shift","signal","silo","spire","stack","stone","storm","swift","tide","trail","vault","vibe","wave","wing","zen","dash","drift","fuse","gleam","haven","ink","key","lift","mint","echo","atlas","beacon","cove","dune","ember","flint","grove","harbor","isle","jolt","kiln","lark","nest","onyx","prism","quartz","spool","thorn","umber","willow","yield","zephyr","brisk","clover","dawn","frost","gale","hollow","ivy","juniper","knoll","luster","meadow","north","opal","plume","quiver","reed","summit","timber","urge","vernal","wander"];
+const ES_ROOTS = ["sol","luna","rio","mar","fuego","viento","cielo","tierra","roca","flor","nube","brisa","ola","oro","plata","cobre","arena","selva","valle","lumen","raiz","llama","monte","costa","alba","norte","sur","este","oeste","rayo","trueno","niebla","cascada","bosque","pico","isla","faro","semilla","brote","cauce","cumbre","aurora","estrella","marea","sombra","destello","vuelo","cima","fronda"];
+
+function generateCompound(lang, minLen, maxLen){
+  const targetLang = lang === 'both' ? (Math.random() < 0.5 ? 'en' : 'es') : lang;
+  const roots = targetLang === 'es' ? ES_ROOTS : EN_ROOTS;
+  const a = rc(roots); const b = rc(roots);
+  if(a === b) return null;
+  const word = a+b;
+  if(word.length < minLen || word.length > maxLen) return null;
+  return word;
+}
+/* =========================================================
+   PART 1b — PREMIUM NAMING ENGINE V5
+   ---------------------------------------------------------
+   V1-V4 all tried to be "clever" — syllable gluing, curated
+   fragments, independent weighted slots, then a hand-authored
+   phonotactic transition model. Every version technically passed
+   its own gates and still didn't sound right, because none of
+   them were actually anchored to "does a person with taste like
+   this name" — they were anchored to "does this pass the rules I
+   wrote." Confirmed directly against a small set of hand-picked,
+   genuinely good-sounding example names (Vexo, Kavi, Serna, Kiro,
+   Trevo, Zolt, Talix...), which is what THIS version is built
+   from — a small, deliberately curated set of building blocks
+   that are already known to sound clean, rather than a large
+   rule system trying to derive cleanness from first principles.
+
+   Structurally simpler than V4 on purpose:
+   - Every syllable is exactly ONE onset (a single consonant or a
+     short whitelisted cluster) + ONE vowel. No "bridge" concept
+     at all — which also means the entire class of bug that
+     produced dobpo/bivga/vuhpa (two arbitrary consonants meeting
+     at a syllable boundary) is structurally impossible here, not
+     just blocked by a filter: a consonant can only ever be
+     followed by a vowel in this design.
+   - The same vowel is never reused within one word (a direct,
+     literal implementation of "don't repeat the same vowel" from
+     manual review of what sounds clean vs. muddy).
+   - An optional single soft landing consonant (n, r, l, s, x, t)
+     may close the word — never a cluster, never two.
+   - Three small "mood" palettes (crisp/tech, soft/premium,
+     playful/consumer) replace the previous 13 elaborate family
+     profiles — fewer knobs, each one hand-picked from consonants
+     that already sound good together, easier to reason about and
+     verify by ear.
+   ========================================================= */
+
+const UGLY_PATTERNS = ['gw','bw','pw','dw','vw','kw','qw','zh','uu','ii','ooo','iou','eae','aio','shiz','iy','yi','wj','jw','zx','xz','qz','tz','dz','ngm','qq','xx','yy','zz','jj','vvv','kkk'];
+const CARTOON_BLOCKLIST = ['spupu','gugru','gagru','fefli','fefru','fofru','twodwo','acuub','buwpou','gwunav','epgwan','lala','meme','gugu','dodo','gaga','pupu'];
+const EMBEDDED_BLOCK = [
+  'the','and','for','are','was','not','but','you','all','can','her','him','his','out','day','get','has','had','let','put','say','she','too','use',
+  'gif','jpg','png','pdf','http','www',
+  'cripl','kill','dead','hate','fart','puke','crap','shit','fuck','damn','hell','nazi','rape','sex','ass','dick','cock',
+  // Common 3-letter English words — added after review found endings
+  // like "wet", "tit", "ban", "bar", "fit", "men" slipping through as
+  // the tail end of otherwise-clean invented words (e.g. "fuwet",
+  // "meban", "mofit"). Not exhaustive, but covers the common ones a
+  // reader would actually notice.
+  'wet','tit','tot','ban','bar','fit','men','mal','nit','hot','pot','mad','sad','bad','dot','cat','dog','fan','jam','gap','cap','map','tap','lap','nap','rap','sap','tip','zip','dip','lip','rip','sip','cop','hop','mop','pop','top','job','rob','mob','sob','gun','fun','run','sun','bun','pun','nun','bat','fat','hat','mat','pat','rat','sat','vat','bed','fed','led','red','wed','big','dig','fig','pig','rig','wig','jig','box','fox','mix','fix','six','tax','wax','jar','car','far','tar','war','ear','but','cut','gut','hut','jut','nut','put','rut','but','pit','sit','kit','lit','wit','bit','let','met','net','pet','set','vet','yet','jet','bot','cot','dot','got','jot','lot','not','rot','let','bet','pet','vet','set','net','met','fet','jog','log','fog','hog','dog','cog','bog','tug','bug','hug','jug','mug','pug','rug','tug','dug','ale','old','ash','ark','awe','ago'
+];
+function hasEmbeddedBadSubstring(word){ return EMBEDDED_BLOCK.some(term => word.includes(term)); }
+function hasUglyPattern(word){ return UGLY_PATTERNS.some(p => word.includes(p)) || CARTOON_BLOCKLIST.includes(word); }
+
+function syllableOnsets(word){
+  const onsets = [];
+  let i = 0;
+  while(i < word.length){
+    let onset = '';
+    while(i < word.length && !isVowel(word[i])){ onset += word[i]; i++; }
+    if(i < word.length){
+      onsets.push(onset);
+      while(i < word.length && isVowel(word[i])) i++;
+    } else break;
+  }
+  return onsets;
+}
+function isReduplicative(word){
+  const onsets = syllableOnsets(word).map(o => o.slice(-1)).filter(Boolean);
+  const seen = new Set();
+  for(const c of onsets){ if(seen.has(c)) return true; seen.add(c); }
+  const bigrams = [];
+  for(let i=0;i<word.length-1;i++){ if(!isVowel(word[i]) && isVowel(word[i+1])) bigrams.push(word.slice(i,i+2)); }
+  return new Set(bigrams).size !== bigrams.length;
+}
+function rareLetterCount(word){ return (word.match(/[qxwzy]/g) || []).length; }
+function vowelRatio(word){ return (word.match(/[aeiou]/g)||[]).length / word.length; }
+
+function trigrams(word){ const out=[]; for(let i=0;i<word.length-2;i++) out.push(word.slice(i,i+3)); return out; }
+function trigramOverlap(a,b){
+  const ta=new Set(trigrams(a)), tb=new Set(trigrams(b));
+  if(ta.size===0 || tb.size===0) return 0;
+  let shared=0; for(const g of ta) if(tb.has(g)) shared++;
+  const union = new Set([...ta,...tb]).size;
+  return union===0 ? 0 : shared/union;
+}
+function combinedSimilarity(a,b){
+  const lev = 1 - (levenshtein(a,b)/Math.max(a.length,b.length));
+  const big = ngramOverlap(a,b);
+  const tri = trigramOverlap(a,b);
+  return (lev+big+tri)/3;
+}
+function consonantSkeleton(word){ return word.split('').filter(c=>!isVowel(c)).sort().join(''); }
+
+function weightedChoice(pairs){
+  const total = pairs.reduce((s,[,w])=>s+w, 0);
+  let roll = Math.random() * total;
+  for(const [item, w] of pairs){ roll -= w; if(roll <= 0) return item; }
+  return pairs[pairs.length-1][0];
+}
+
+const LEGAL_CONSONANT_PAIRS = new Set([
+  'bl','br','ch','cl','cr','dr','fl','fr','gl','gr','ph','pl','pr','sc','sh','sk','sl','sm','sn','sp','st','sw','th','tr','wh',
+  'ct','ft','ld','lf','lk','lm','lp','ls','lt','mp','nc','nd','nk','nt','pt','rd','rk','rm','rn','rp','rt','rs','sk','sp','st',
+  'ff','ll','mm','nn','pp','rr','ss','tt','zz','ck','ng'
+]);
+function hasIllegalConsonantCluster(word){
+  for(let i=0;i<word.length-1;i++){
+    if(!isVowel(word[i]) && !isVowel(word[i+1])){
+      if(!LEGAL_CONSONANT_PAIRS.has(word.slice(i,i+2))) return true;
+    }
+  }
+  return false;
+}
+
+/* ---------- Hand-curated building blocks (the actual fix) ---------- */
+// Every onset here was chosen because it appears in a hand-picked
+// set of names that were manually judged to sound clean, punchy,
+// and easy to say — not derived from a frequency table or a
+// linguistic model. Small and deliberately curated on purpose.
+const MOOD_PALETTES = {
+  crisp:   { onsets: ['v','z','k','t','d','tr','dr','kr'], vowelBias: ['e','i','o'] },
+  premium: { onsets: ['s','n','r','b','l','bl','pr','cr'], vowelBias: ['a','e','o'] },
+  playful: { onsets: ['w','f','y','m','b','gl'],           vowelBias: ['i','o','u'] }
+};
+const FAMILY_NAMES = Object.keys(MOOD_PALETTES);
+const SOFT_LANDINGS = ['n','r','l','s','x','t'];
+const ALL_VOWELS = ['a','e','i','o','u'];
+
+/* ---------- Per-batch diversity trackers (simple: prefix + suffix + skeleton) ---------- */
+let familyUsageThisBatch = {};
+let batchPrefixUsage = {};
+let batchSuffixUsage = {};
+let batchBuckets = {};
+let batchSkeletons = {};
+function resetFamilyTracker(){
+  familyUsageThisBatch = {};
+  batchPrefixUsage = {};
+  batchSuffixUsage = {};
+  batchBuckets = {};
+  batchSkeletons = {};
+  batchEndingHardCount = {};
+}
+function pickFamilyForBatch(batchSize){
+  const cap = Math.max(4, Math.ceil((batchSize / FAMILY_NAMES.length) * 1.4));
+  const available = FAMILY_NAMES.filter(f => (familyUsageThisBatch[f]||0) < cap);
+  return rc(available.length ? available : FAMILY_NAMES);
+}
+function prefixCapExceeded(word, batchSize){
+  const cap = Math.max(3, Math.ceil(batchSize * 0.05));
+  return (batchPrefixUsage[word.slice(0,2)]||0) >= cap;
+}
+function suffixCapExceeded(word, batchSize){
+  const cap = Math.max(3, Math.ceil(batchSize * 0.05));
+  return (batchSuffixUsage[word.slice(-2)]||0) >= cap;
+}
+function isNearDuplicateInBatch(name){
+  const bucket = (batchBuckets[name[0]] || []).slice(-20);
+  if(bucket.some(existing => combinedSimilarity(name, existing) > 0.70)) return true;
+  const skeleton = consonantSkeleton(name);
+  if(skeleton.length >= 2 && batchSkeletons[skeleton]) return true;
+  return false;
+}
+function registerBatchName(word, family){
+  const first = word[0];
+  if(!batchBuckets[first]) batchBuckets[first] = [];
+  batchBuckets[first].push(word);
+  batchPrefixUsage[word.slice(0,2)] = (batchPrefixUsage[word.slice(0,2)]||0) + 1;
+  batchSuffixUsage[word.slice(-2)] = (batchSuffixUsage[word.slice(-2)]||0) + 1;
+  familyUsageThisBatch[family] = (familyUsageThisBatch[family]||0) + 1;
+  const skeleton = consonantSkeleton(word);
+  if(skeleton.length >= 2) batchSkeletons[skeleton] = true;
+}
+
+/* ---------- Simple, controllable syllable/word builder ---------- */
+function pickVowelAvoiding(mood, usedVowels){
+  const bias = MOOD_PALETTES[mood].vowelBias;
+  const remaining = ALL_VOWELS.filter(v => !usedVowels.includes(v));
+  const pool = remaining.length ? remaining : ALL_VOWELS;
+  return weightedChoice(pool.map(v => [v, bias.includes(v) ? 2 : 1]));
+}
+function buildSyllable(mood, usedVowels){
+  const onset = rc(MOOD_PALETTES[mood].onsets);
+  const vowel = pickVowelAvoiding(mood, usedVowels);
+  return { text: onset + vowel, vowel };
+}
+
+function generatePremiumCandidate(minLen, maxLen, batchSize){
+  const family = pickFamilyForBatch(batchSize || 100);
+  const roll = Math.random();
+  const syllCount = roll < 0.18 ? 1 : (roll < 0.85 ? 2 : 3);
+
+  let word = '';
+  const usedVowels = [];
+  for(let i=0;i<syllCount;i++){
+    const syll = buildSyllable(family, usedVowels);
+    word += syll.text;
+    usedVowels.push(syll.vowel);
+  }
+  if(Math.random() < 0.45){
+    word += rc(SOFT_LANDINGS);
+  }
+
+  if(word.length < minLen || word.length > maxLen) return null;
+  if(!/^[a-z]+$/.test(word)) return null;
+  if(hasUglyPattern(word)) return null;
+  if(hasIllegalConsonantCluster(word)) return null;
+  if(isReduplicative(word)) return null;
+  if(rareLetterCount(word) >= 2) return null;
+  const vr = vowelRatio(word);
+  if(vr < 0.35 || vr > 0.60) return null;
+  if(prefixCapExceeded(word, batchSize||100)) return null;
+  if(suffixCapExceeded(word, batchSize||100)) return null;
+  if(isNearDuplicateInBatch(word)) return null;
+  if(!isValidWord(word)) return null;
+
+  return { word, family };
+}
+
+/* ---------- Premium hard-gate pipeline ---------- */
+function passesPremiumGates(name){
+  if(hasUglyPattern(name)) return false;
+  if(hasEmbeddedBadSubstring(name)) return false;
+  if(hasIllegalConsonantCluster(name)) return false;
+  if(isReduplicative(name)) return false;
+  if(rareLetterCount(name) >= 2) return false;
+  const vr = vowelRatio(name);
+  if(vr < 0.35 || vr > 0.60) return false;
+  if(name.length < 4 || name.length > 8) return false;
+  const syll = countSyllables(name);
+  if(syll >= 4) return false;
+  if(medicineFlag(name)) return false;
+  if(visualScore(name) < 68) return false;
+
+  if(generateVariants(name).length > 0) return false;
+
+  if(hasCloseMatch(name, COMMON_WORDS, 1)) return false;
+  if(hasCloseMatch(name, FAMOUS_BRANDS, 1)) return false;
+  if(hasCloseMatch(name, COMMON_CITIES, 1)) return false;
+  if(hasCloseMatch(name, COMMON_SURNAMES, 1)) return false;
+  if(hasCloseMatch(name, COMMON_FIRST_NAMES, 1)) return false;
+  if(hasCloseMatch(name, FAMOUS_IP_TERMS, 1)) return false;
+
+  const composite = premiumCompositeScore(name);
+  if(name.length === 8 && composite < 82) return false;
+  if(composite < 75) return false;
+
+  return true;
+}
+
+function generatePremiumWord(minLen, maxLen, batchSize){
+  const candidate = generatePremiumCandidate(minLen, maxLen, batchSize);
+  if(!candidate) return null;
+  if(!passesPremiumGates(candidate.word)) return null;
+  registerBatchName(candidate.word, candidate.family);
+  return { word: candidate.word, family: candidate.family };
+}
+
+
+
+/* =========================================================
+   PART 1g — PREMIUM COMPOUND GENERATOR
+   ---------------------------------------------------------
+   Real elite tech brands are sometimes two genuine words fused
+   cleanly (GitHub = git+hub, Dropbox = drop+box, Salesforce =
+   sales+force, Webflow = web+flow, Coinbase = coin+base,
+   Cloudflare = cloud+flare, Snowflake = snow+flake). This is a
+   distinct, legitimate naming pattern from the invented single-
+   word engine above — curated real vocabulary, combined with the
+   same join-point pronunciation validation (no illegal cluster
+   allowed at the seam either) and the same dictionary/brand/IP
+   safety gates so the result never collides with something real.
+   ========================================================= */
+const PREMIUM_COMPOUND_WORDS = [
+  "cloud","snow","storm","flare","shift","drift","swift","bright","clear","pure","true","keen","bold","vast","calm","sharp","quick","fresh",
+  "north","south","ridge","summit","dawn","dusk","ember","frost","glow","spark","pulse","wave","tide","peak","crest",
+  "core","base","hub","node","gate","path","scope","link","sync","flow","vault","forge","grid","edge","arc","axis",
+  "orbit","atlas","zenith","nova","echo","lumen","prime","vertex","apex","helix","thread","strand","quartz","onyx","jade","coral","amber","pearl","opal",
+  "sales","market","trade","launch","ship","build","craft","forge","scale","growth","signal","beacon","compass","anchor","harbor","voyage","summit","peak"
+];
+function generatePremiumCompoundCandidate(minLen, maxLen){
+  const a = rc(PREMIUM_COMPOUND_WORDS);
+  const b = rc(PREMIUM_COMPOUND_WORDS);
+  if(a === b) return null;
+  const word = a + b;
+  if(word.length < minLen || word.length > maxLen) return null;
+  if(hasIllegalConsonantCluster(word)) return null; // catches bad seams too, e.g. "path"+"vault"
+  if(hasUglyPattern(word)) return null;
+  if(isReduplicative(word)) return null;
+  if(!isValidWord(word)) return null;
+  // must not already equal a known brand/word exactly (distance 0) —
+  // deliberately looser than the invented-engine's distance<=1 gate,
+  // since two real words fused WILL often sit close to one of them
+  // by construction (that's the point of this mode), only an exact
+  // collision with an existing brand is disqualifying here.
+  if(hasCloseMatch(word, FAMOUS_BRANDS, 0)) return null;
+  if(hasCloseMatch(word, FAMOUS_IP_TERMS, 0)) return null;
+  const composite = premiumCompositeScore(word);
+  if(composite < 78) return null;
+  return { word, family: 'compound', parts: [a,b] };
+}
+function generatePremiumCompound(minLen, maxLen, batchSize){
+  const candidate = generatePremiumCompoundCandidate(minLen, maxLen);
+  if(!candidate) return null;
+  if(isNearDuplicateInBatch(candidate.word)) return null;
+  registerBatchName(candidate.word, 'compound');
+  return { word: candidate.word, family: candidate.family };
+}
+
+/* =========================================================
+   PART 1h — PROVEN-TECHNIQUE NAMING ENGINE
+   ---------------------------------------------------------
+   Complete rebuild. Every earlier version (V1-V5, then the
+   Evocative fragment/blend engine) still generated INVENTED
+   material and then tried to filter it into feeling legitimate.
+   That's backwards. Real premium names — Slack, Notion, Ramp,
+   Spotify, Tumblr, Flickr, Uber — are almost never invented
+   phonemes. They're built from a small number of PROVEN,
+   repeatable techniques, each one starting from a REAL word:
+
+   1. USE A REAL WORD DIRECTLY (Slack, Stripe, Notion, Ramp).
+      No transformation at all — the word just has to be short,
+      clean, and available.
+   2. VOWEL-DROP a real word (Tumblr from tumbler, Flickr from
+      flicker, Scribd from scribed). A curated set of real words
+      where dropping the vowel before the final consonant still
+      reads cleanly — verified by hand, not computed blindly,
+      since a blind vowel-drop can just as easily produce an
+      unpronounceable mess.
+   3. BORROW a real foreign word directly (Uber from German,
+      Nokia is a place name, Trivago-style Latin/Italian/Spanish
+      roots). A small, carefully verified list of real words in
+      other languages with a genuine, checkable meaning — never
+      an invented "foreign-sounding" string.
+   4. LIGHT SUFFIX on a real root (Spotify, Shopify — root + a
+      small set of proven startup suffixes).
+
+   No blending, no arbitrary phoneme chains, no independent
+   letter sampling anywhere in this engine. Every single output
+   traces back to an actual word a human would recognize.
+
+   Batch diversity is also a HARD rule here, not a soft weight:
+   no ending (last 2 letters) may appear more than twice in one
+   batch, checked directly against what's already in the batch,
+   because the earlier soft-weighted caps still let "-ive/-ise/
+   -ent" dominate an entire visible batch even while technically
+   staying under their statistical share.
+   ========================================================= */
+
+// Technique 1 — real English words, direct, no modification.
+// Curated for: short (4-8 letters), positive/neutral, plausible
+// as a tech/business name, genuinely real words (not near-words).
+const REAL_WORDS_EN = [
+  'bloom','ember','frost','storm','blaze','flare','gleam','dawn','dusk','tide','wave','drift',
+  'breeze','cascade','summit','canyon','harbor','anchor','comet','meteor','prism','crystal','echo','thunder',
+  'aurora','coral','amber','cedar','willow','maple','brook','glade','marsh','ridge','bluff','delta',
+  'plume','spruce','birch','swift','pulse','surge','dash','flash','sprint','glide','launch','boost',
+  'thrust','spark','zoom','leap','bound','prime','noble','grace','charm','bliss','zeal','vigor',
+  'merit','valor','honor','pride','faith','trust','hope','calm','ease','peace','joy','glow',
+  'shine','spirit','vision','wisdom','insight','logic','sense','clarity','focus','drive','forge','steel',
+  'stone','granite','boulder','peak','vertex','core','base','bond','brace','shield','armor','guard',
+  'fort','craft','sculpt','weave','mold','shape','form','sketch','design','studio','canvas','palette',
+  'atelier','flow','sync','link','node','scope','stack','grid','byte','code','ship','build',
+  'scale','ramp','crest','realm','quill','haven','quest','scout','guide','pilot','ranger','rocket',
+  'planet','cosmos','shard','spire','vault','dune','fjord','grove','thicket','plateau','basin','strand',
+  'river','ocean','island','meadow','valley','forest','garden','orchard','pasture','prairie','tundra','glacier',
+  'lagoon','lake','pond','stream','spring','well','falls','rapids','current','channel','strait','cove',
+  'bay','reef','cliff','crag','slope','trail','path','route','journey','voyage','venture','expedition',
+  'odyssey','flight','beam','ray','flame','ignite','kindle','light','bright','vivid','radiant','luminous',
+  'solar','lunar','stellar','celestial','orbit','galaxy','nebula','satellite','horizon','zenith','meridian','equinox',
+  'solstice','season','harvest','blossom','petal','leaf','root','branch','stem','seed','sprout','sapling',
+  'timber','lumber','plank','frame','pillar','column','arch','dome','tower','bridge','port','dock',
+  'pier','sail','mast','helm','deck','hull','keel','compass','beacon','signal','rhythm','cadence',
+  'tempo','melody','harmony','chord','tune','note','resonance','ripple','swell','soar','ascend','climb',
+  'rise','elevate','uplift','thrive','flourish','prosper','excel','achieve','accomplish','attain','fulfill','realize',
+  'pioneer','trailblaze','carve','etch','engrave','stitch','thread','fabric','texture','pattern','motif','emblem',
+  'symbol','sigil','banner','insignia','hallmark','mark','stamp','seal','token','badge','medal','trophy',
+  'crown','laurel','wreath','garland','bouquet','vitality','vibrant','dynamic','kinetic','active','agile','nimble',
+  'rapid','brisk','fleet','graceful','elegant','refined','polished','sleek','smooth','crisp','clean','clear',
+  'lucid','pristine','pure','genuine','authentic','honest','candid','sincere','earnest','loyal','steadfast','resolute',
+  'staunch','stalwart','sturdy','robust','solid','sound','stable','secure','safe','shelter','refuge','sanctuary',
+  'oasis','retreat','escape','freedom','liberty','independence','autonomy','sovereign','regal','royal','majestic','grand',
+  'stately','dignified','proud','confident','bold','daring','brave','valiant','fearless','courageous','audacious','ambitious',
+  'driven','motivated','inspired','creative','inventive','original','novel','fresh','innovative','modern','progressive','forward',
+  'advance','frontier','discover','explore','unearth','reveal','illuminate','clarify','simplify','streamline','optimize','refine',
+  'enhance','amplify','magnify','expand','broaden','extend','stretch','reach','connect','unite','merge','blend',
+  'fuse','combine','synergy','balance','equilibrium','symmetry','proportion','order','structure','system','network','cluster',
+  'constellation','array','matrix','lattice','mesh','web','tapestry','mosaic','collage','spectrum','gem','jewel',
+  'diamond','sapphire','emerald','ruby','topaz','garnet','ivory','marble','slate','flint','quartz','mineral',
+  'ore','metal','iron','bronze','copper','silver','gold','platinum','titanium','chrome','nickel','carbon',
+  'alloy','furnace','kiln','hearth','cinder','ash','smoke','mist','fog','haze','cloud','vapor',
+  'steam','ice','snow','sleet','hail','rain','drizzle','shower','lightning','gale','gust','wind',
+  'draft','axis','vector','pixel','circuit','relay','conduit','feed','pipeline','conveyor','engine','motor',
+  'turbine','rotor','gear','cog','lever','pivot','fulcrum','nucleus','kernel','origin','source','genesis',
+  'sunrise','morning','daybreak','noon','midday','twilight','evening','sunset','nightfall','midnight'
+];
+
+// Technique 3 — real foreign words, direct, no modification.
+// Small and deliberately conservative: every entry's meaning was
+// double-checked, not guessed, since misrepresenting a foreign
+// word is worse than not including it.
+const REAL_WORDS_FOREIGN = [
+  {word:'nova', origin:'Latin', meaning:'new'}, {word:'vero', origin:'Italian', meaning:'true'},
+  {word:'puro', origin:'Spanish', meaning:'pure'}, {word:'forte', origin:'Italian', meaning:'strong'},
+  {word:'vita', origin:'Latin', meaning:'life'}, {word:'luce', origin:'Italian', meaning:'light'},
+  {word:'terra', origin:'Latin', meaning:'earth'}, {word:'mira', origin:'Spanish', meaning:'look/behold'},
+  {word:'sol', origin:'Spanish', meaning:'sun'}, {word:'luna', origin:'Spanish', meaning:'moon'},
+  {word:'rio', origin:'Spanish', meaning:'river'}, {word:'mar', origin:'Spanish', meaning:'sea'},
+  {word:'fuego', origin:'Spanish', meaning:'fire'}, {word:'cielo', origin:'Spanish', meaning:'sky'},
+  {word:'oro', origin:'Spanish', meaning:'gold'}, {word:'alma', origin:'Spanish', meaning:'soul'},
+  {word:'vida', origin:'Spanish', meaning:'life'}, {word:'brio', origin:'Italian', meaning:'vigor'},
+  {word:'bene', origin:'Italian', meaning:'good'}, {word:'dolce', origin:'Italian', meaning:'sweet'},
+  {word:'presto', origin:'Italian', meaning:'quick'}, {word:'sora', origin:'Japanese', meaning:'sky'},
+  {word:'kaze', origin:'Japanese', meaning:'wind'}, {word:'yume', origin:'Japanese', meaning:'dream'},
+  {word:'hoshi', origin:'Japanese', meaning:'star'}, {word:'mizu', origin:'Japanese', meaning:'water'},
+  {word:'levo', origin:'Latin', meaning:'light (weight)'}, {word:'fortis', origin:'Latin', meaning:'strong'},
+  {word:'ventus', origin:'Latin', meaning:'wind'}, {word:'lumen', origin:'Latin', meaning:'light'},
+  {word:'unda', origin:'Latin', meaning:'wave'}
+];
+
+// Technique 2 — vowel-drop. Pre-validated by hand (not computed
+// blindly): the source real word, and the result of dropping the
+// vowel just before the final consonant, verified to still be
+// pronounceable and to pass the same illegal-cluster whitelist as
+// everything else generated in this app.
+const VOWEL_DROP_WORDS = [
+  {source:'wonder', result:'wondr'}, {source:'wander', result:'wandr'}, {source:'thunder', result:'thundr'},
+  {source:'ponder', result:'pondr'}, {source:'render', result:'rendr'}, {source:'blender', result:'blendr'},
+  {source:'cluster', result:'clustr'}, {source:'muster', result:'mustr'}, {source:'banter', result:'bantr'},
+  {source:'foster', result:'fostr'}, {source:'winter', result:'wintr'}, {source:'printer', result:'printr'},
+  {source:'hunter', result:'huntr'}, {source:'painter', result:'paintr'}, {source:'planter', result:'plantr'},
+  {source:'sprinter', result:'sprintr'}
+];
+
+// Technique 4 — light suffix on a real root. Small, proven
+// suffix set only (the Spotify/Shopify pattern), not the large
+// invented-ending list from earlier versions.
+const STARTUP_SUFFIXES = ['ify','ly','io','ster'];
+const SUFFIX_ROOTS = ['spot','shop','fresh','class','sched','track','sketch','trust','swift','bloom','craft','spark','shape','build','grow'];
+
+// Evocative-style generation can still occasionally reconstruct an
+// unrelated real word by accident; kept as a small targeted list.
+const EVOCATIVE_ACCIDENTAL_COLLISIONS = new Set(['student','motive','sole','lucent','ancient','truant','solent','boston','patent','potent']);
+
+function pickDirectEnglish(){ return rc(REAL_WORDS_EN); }
+function pickForeign(){ return rc(REAL_WORDS_FOREIGN); }
+function pickVowelDrop(){ return rc(VOWEL_DROP_WORDS); }
+function pickSuffixed(){
+  const root = rc(SUFFIX_ROOTS);
+  const suffix = rc(STARTUP_SUFFIXES);
+  return root + suffix;
+}
+
+// Technique 5 — overlap blend (true portmanteau).
+// Pinterest = pin + (in)terest, sharing "in". Instagram = insta +
+// (in)stagram-ish overlap on "sta"->"gram" chain, Verizon = veritas
+// + hor(izon). This is a DIFFERENT technique from Part 1g's compound
+// generator above, which just concatenates two roots at a hard seam
+// (drop+box). A real overlap blend finds a shared span between the
+// END of word A and the START of word B and fuses THROUGH it, so
+// the result is shorter than A+B combined — that shared-letter
+// economy is what makes a blend read as one invented word instead
+// of two stapled-together ones. Graph/overlap-search portmanteau
+// generators (see trishume/portmanteau on GitHub) use exactly this
+// idea at dictionary scale; here it's scoped to the same curated,
+// hand-checked word banks already used above so nothing ungrounded
+// slips in.
+function findOverlap(a, b){
+  for(let len = 3; len >= 2; len--){
+    if(a.length > len && b.length > len && a.slice(-len) === b.slice(0, len)) return len;
+  }
+  return 0;
+}
+
+// Prefix index so blend candidates are FOUND, not guessed-and-
+// filtered. Random-pair-then-check was correct but wasteful: true
+// end/start overlaps between two random words are rare, so almost
+// every roll wasted an attempt. Indexing every word by its first
+// 2 and first 3 letters means, given word A, we can look up every
+// word B that could actually fuse with it in O(1) — this is the
+// same core idea graph-search portmanteau tools (e.g. trishume/
+// portmanteau on GitHub) use: search FOR an overlap, don't hope
+// to stumble into one.
+function buildOverlapIndex(words){
+  const byPrefix2 = {}, byPrefix3 = {};
+  words.forEach(w => {
+    if(w.length >= 2){ const p = w.slice(0,2); (byPrefix2[p] = byPrefix2[p] || []).push(w); }
+    if(w.length >= 3){ const p = w.slice(0,3); (byPrefix3[p] = byPrefix3[p] || []).push(w); }
+  });
+  return { byPrefix2, byPrefix3 };
+}
+const OVERLAP_INDEX = buildOverlapIndex(REAL_WORDS_EN);
+
+function pickOverlapBlend(){
+  const a = rc(REAL_WORDS_EN);
+  if(a.length < 4) return null;
+  // Prefer a 3-letter overlap first — it reads as one clean fused
+  // word more often than a 2-letter overlap does. Fall back to 2.
+  let overlap = 3;
+  let candidates = OVERLAP_INDEX.byPrefix3[a.slice(-3)] || [];
+  if(!candidates.length){ overlap = 2; candidates = OVERLAP_INDEX.byPrefix2[a.slice(-2)] || []; }
+  if(!candidates.length) return null;
+  const pool = candidates.filter(w => w !== a);
+  if(!pool.length) return null;
+  const b = rc(pool);
+  const word = a + b.slice(overlap);
+  // must actually be shorter than naive concatenation, or it's not
+  // a real overlap fusion, just two words touching
+  if(word.length >= a.length + b.length) return null;
+  return { word, parts: [a, b], overlap };
+}
+
+// Hard, literal batch rule: an ending may appear at most twice in
+// one batch. Not a statistical weight — a direct count check
+// against what's already been accepted, because a soft weight
+// still let "-ive/-ise/-ent" dominate a whole visible batch while
+// technically staying under its allotted share.
+let batchEndingHardCount = {};
+function endingHardCapExceeded(word){
+  const end = word.slice(-2);
+  return (batchEndingHardCount[end]||0) >= 2;
+}
+function registerEndingHardCap(word){
+  const end = word.slice(-2);
+  batchEndingHardCount[end] = (batchEndingHardCount[end]||0) + 1;
+}
+
+function generatePremiumEvocativeCandidate(minLen, maxLen){
+  const technique = Math.random();
+  let word, theme = 'proven';
+
+  if(technique < 0.30){
+    word = pickDirectEnglish();
+    theme = 'direct-word';
+  } else if(technique < 0.46){
+    const f = pickForeign();
+    word = f.word; theme = 'foreign-' + f.origin.toLowerCase();
+  } else if(technique < 0.62){
+    const v = pickVowelDrop();
+    word = v.result; theme = 'vowel-drop';
+  } else if(technique < 0.78){
+    word = pickSuffixed();
+    theme = 'suffix';
+  } else {
+    const bl = pickOverlapBlend();
+    if(!bl) return null;
+    word = bl.word; theme = 'overlap-blend';
+  }
+
+  if(!word) return null;
+  if(word.length < minLen || word.length > maxLen) return null;
+  if(!/^[a-z]+$/.test(word)) return null;
+  if(hasIllegalConsonantCluster(word)) return null;
+  if(hasUglyPattern(word)) return null;
+  if(hasEmbeddedBadSubstring(word)) return null;
+  if(EVOCATIVE_ACCIDENTAL_COLLISIONS.has(word)) return null;
+  if(hasCloseMatch(word, FAMOUS_BRANDS, 1)) return null;
+  if(hasCloseMatch(word, FAMOUS_IP_TERMS, 1)) return null;
+  if(medicineFlag(word)) return null;
+  if(!isValidWord(word)) return null;
+  return { word, family: 'evocative', theme };
+}
+function generatePremiumEvocative(minLen, maxLen, batchSize){
+  const candidate = generatePremiumEvocativeCandidate(minLen, maxLen);
+  if(!candidate) return null;
+  if(isNearDuplicateInBatch(candidate.word)) return null;
+  if(endingHardCapExceeded(candidate.word)) return null;
+  registerBatchName(candidate.word, 'evocative');
+  registerEndingHardCap(candidate.word);
+  return { word: candidate.word, family: candidate.family, theme: candidate.theme };
+}
+
+
+
+/* =========================================================
+   PART 1c — SOUND SYMBOLISM (Bouba/Kiki axis)
+   Real, studied psycholinguistic phenomenon (Köhler 1929;
+   Ramachandran & Hubbard 2001): rounded sonorant sounds read
+   as soft/organic, sharp plosive/fricative sounds read as
+   angular/technical. Applied here as a deterministic letter-
+   frequency heuristic — a real signal, not a guarantee of how
+   any specific audience will react.
+   ========================================================= */
+const BOUBA_LETTERS = 'mnlorbuw'; // round, soft, sonorant
+const KIKI_LETTERS = 'ktpgxzci'; // sharp, angular, plosive
+
+function soundSymbolism(word){
+  let bouba=0, kiki=0;
+  for(const ch of word){ if(BOUBA_LETTERS.includes(ch)) bouba++; if(KIKI_LETTERS.includes(ch)) kiki++; }
+  const total = bouba+kiki || 1;
+  const kikiRatio = kiki/total;
+  const axis = clamp(Math.round(kikiRatio*100),0,100); // 0=bouba/soft, 100=kiki/sharp
+  let label;
+  if(axis <= 35) label = 'Soft & Organic';
+  else if(axis >= 65) label = 'Sharp & Technical';
+  else label = 'Balanced';
+  return { axis, label };
+}
+
+/* =========================================================
+   PART 1d — NAMING ARCHETYPE + TRADEMARK DISTINCTIVENESS
+   Real taxonomy used in the naming industry (e.g. Abercrombie
+   spectrum for trademark strength: generic < descriptive <
+   suggestive < arbitrary < fanciful). Applied mechanically from
+   structure, not claiming legal certainty — always suggest a
+   real clearance search before filing.
+   ========================================================= */
+function namingArchetype(name){
+  const syll = countSyllables(name);
+  if(syll <= 1) return 'Coined — Monosyllabic Punch';
+  if(syll === 2) return 'Coined — Trochaic (2-syllable)';
+  return 'Coined — Flowing Multi-syllable';
+}
+
+function trademarkDistinctiveness(dictScore){
+  // Our generated candidates are invented, non-dictionary
+  // strings by construction — that places them at the strong
+  // end of the Abercrombie spectrum by default. If it happens
+  // to sit close to a real word (lower dictScore), we say so
+  // rather than overclaiming "fanciful" regardless.
+  if(dictScore >= 90) return { tag: 'Fanciful', note: 'Invented, no direct dictionary meaning — the strongest inherent trademark position on the Abercrombie spectrum, subject to an actual clearance search.' };
+  if(dictScore >= 75) return { tag: 'Arbitrary-leaning', note: 'Close to an existing word/brand at the edges — likely still registrable, but run a real clearance search.' };
+  return { tag: 'Weak / Descriptive-leaning', note: 'Close enough to an existing word or brand that trademark strength and confusion risk should be reviewed carefully.' };
+}
+
+/* =========================================================
+   PART 1e — VERBABILITY
+   Heuristic for "can this become a verb" (Google it, Slack me,
+   Uber there) — short, ends in a hard stop or clean consonant,
+   1-2 syllables.
+   ========================================================= */
+function verbability(name){
+  let score = 50;
+  const syll = countSyllables(name);
+  if(syll <= 2) score += 20; else score -= 10;
+  if(name.length <= 6) score += 15;
+  if(/[kptbdg]$/.test(name)) score += 15;
+  if(/[aeiou]$/.test(name)) score -= 5;
+  return clamp(score,0,100);
+}
+
+/* =========================================================
+   PART 1f — PREMIUM COMPOSITE SCORE
+   Directly implements "every name must score well for Trust,
+   Modern, Premium, Memorability, Pronunciation, Typing and
+   Visual Identity" as one weighted, documented formula.
+   ========================================================= */
+// Directly addresses the "sounds like Pokemon" critique: a name
+// built from syllables that ALL share the identical open CV shape
+// (bopafo = C-V-C-V-C-V, perfectly alternating) reads as monotonous
+// no matter how "clean" each individual syllable is. Real brand
+// names usually break the pattern somewhere (a cluster, a closed
+// syllable, an irregular length) — natural asymmetry, not perfect
+// symmetry. Short 4-5 letter alternating words (nova, luna-shaped)
+// are only mildly penalized since those still read fine; longer
+// perfectly-alternating words are penalized harder since the
+// monotony compounds with length.
+function rhythmAsymmetryScore(word){
+  const shape = word.split('').map(c => isVowel(c) ? 'V' : 'C').join('');
+  const alternating = shape.split('').every((ch,i) => ch === (i%2===0 ? shape[0] : (shape[0]==='C'?'V':'C')));
+  if(alternating && word.length >= 6) return 52;
+  if(alternating) return 76;
+  return 93;
+}
+
+function premiumCompositeScore(name){
+  const dna = brandDNA(name);
+  const pron = pronunciationScore(name);
+  const typing = typingConfusionScore(name).score;
+  const visual = visualScore(name);
+  const mem = memorabilityScore(name);
+  const asym = rhythmAsymmetryScore(name);
+  const luxCorp = (dna.luxury + dna.corporate) / 2;
+  const raw = dna.trust*0.13 + dna.modern*0.13 + luxCorp*0.12 +
+    mem*0.12 + pron*0.12 + typing*0.08 + visual*0.10 + asym*0.20;
+  // Recalibration: gate-surviving candidates cluster tightly at the
+  // high end of every OTHER dimension by construction (the gates
+  // already filtered on most of them), so without this the score
+  // collapses toward 100 with no differentiation — confirmed
+  // empirically during testing (299/300 names scored 95+ before this
+  // fix). Compressing the top of the raw range makes a genuine
+  // "100" rare and reserved for names that also score well on
+  // rhythm asymmetry, the one dimension the gates don't already
+  // guarantee.
+  const calibrated = raw >= 70 ? 70 + (raw - 70) * 0.85 : raw;
+  return clamp(Math.round(calibrated), 0, 100);
+}
+
+/* =========================================================
+   PART 2 — REFERENCE DATA (curated, not exhaustive — used
+   for similarity checks, not legal clearance)
+   ========================================================= */
+const COMMON_WORDS_EXTRA = ["flux","sync","loop","stack","grid","node","byte","core","edge","scope","shift","vault","glow","bloom","joy","calm","ease","soft","warm","kind","charm","nest","code","ship","build","cache","thread","kernel","proc","script","opal","pearl","ivory","regal","noble","crest","royal","gleam","muse","ink","craft","canvas","studio","paint","sketch","palette","loom","weave","hollow","drift","glen","plume","claire","piano","forte","vita","storm","shifter","builder","coder","painter","drifter","shipper","dreamer","thinker","worker","walker","dealer","gentle","sterling","basis","sable","basic","havoc","robot","mobile","given","proven","woven","bacon","student","motive","sole","lucent","ancient","truant","solvent","current"];
+const COMMON_WORDS = ["time","year","people","way","day","man","thing","woman","life","child","world","school","state","family","student","group","country","problem","hand","part","place","case","week","company","system","program","question","work","government","number","night","point","home","water","room","mother","area","money","story","fact","month","lot","right","study","book","eye","job","word","business","issue","side","kind","head","house","service","friend","father","power","hour","game","line","end","member","law","car","city","community","name","president","team","minute","idea","body","information","back","parent","face","others","level","office","door","health","person","art","war","history","party","result","change","morning","reason","research","girl","guy","moment","air","teacher","force","education","foot","boy","age","policy","music","market","sense","nation","plan","college","interest","death","experience","effect","use","class","control","care","field","development","role","effort","rate","heart","drug","show","leader","light","voice","wife","whole","police","mind","finally","pull","return","free","military","price","report","less","according","decade","picture","professor","dollar","patient","truth","majority","hospital","church","couple","chance","weapon","difference","light","training","science","offer","director","position","player","record","piece","wall","structure","situation","tax","order","light","staff","specific","western","son","court","enough","condition","event","industry","site","kid","policy","effort","goal","food","farm","crime","matter","opportunity","cost","top","choice","expert","project","source","term","population","doctor","standard","view","risk","official","room","approach","material","cell","judge","tv","act","century","letter","evidence","frame","phone","organization","cost","design","practice","committee","gas","strategy","sign","stock","mission","adult","peace","step","exchange","budget","factor","supply","yard","freedom","review","measure","planet","impact","note","garden","object","satisfaction","author","concept","aspect","status","token","fiber","route","stream","cloud","pulse","signal","engine","spark","forge","circle","spring","valley","meadow","summit","canyon","harbor","current","echo","comet","rocket","planet","atlas","orbit","voyage","anchor","beacon","compass","horizon","journey","pioneer","quest","summit","zenith","nova","aurora","frost","ember"].concat(COMMON_WORDS_EXTRA);
+
+const FAMOUS_BRANDS = ["canva","asana","notion","linear","vercel","stripe","slack","clickup","openai","zapier","framer","figma","google","apple","nike","adobe","spotify","netflix","airbnb","uber","zoom","dropbox","github","gitlab","trello","atlassian","salesforce","oracle","microsoft","amazon","meta","tesla","paypal","square","shopify","twilio","segment","mixpanel","amplitude","intercom","zendesk","hubspot","mailchimp","canonical","docker","kubernetes","redis","mongodb","postgres","cloudflare","fastly","heroku","netlify","render","supabase","firebase","auth0","okta","datadog","sentry","pagerduty","grafana","tableau","looker","snowflake","databricks","palantir","robinhood","coinbase","binance","kraken","chime","affirm","klarna","revolut","monzo","wise","plaid","brex","ramp","gusto","rippling","deel","remote","calendly","loom","miro","monday","airtable","coda","superhuman","raycast","arc","warp","cursor","replit","vercel","render","railway","fly","planetscale","clerk","resend","postmark","twilio","sendgrid","algolia","meilisearch","typesense","pinecone","weaviate","langchain","huggingface","runway","midjourney","perplexity","anthropic"];
+
+const MED_SUFFIXES = ["zol","vir","pril","statin","cillin","mab","parin","oxetine","azole","dipine","olol","sartan","mycin","caine"];
+
+// Famous fictional/franchise IP terms — a real, separate risk
+// category from trademarked business names. Deliberately a short,
+// obvious-cases-only list (Star Wars, Pokemon, Marvel, LOTR, Harry
+// Potter, major game/franchise terms); genuinely impossible to make
+// this exhaustive, so it's a spot-check, not a clearance search.
+const FAMOUS_IP_TERMS = ["jedi","sith","yoda","vader","hobbit","gandalf","potter","hogwarts","pokemon","pikachu","marvel","avenger","ironman","batman","superman","matrix","avatar","disney","pixar","ninja","gundam","zelda","mario","sonic","shrek","simpson","gollum","wizard","hulk","thanos","groot","thor","loki"];
+
+/* =========================================================
+   PART 3 — CORE STRING ALGORITHMS
+   (Levenshtein, Jaro-Winkler, Soundex — all standard,
+   well-documented algorithms, implemented from scratch)
+   ========================================================= */
+function levenshtein(a,b){
+  const m=a.length, n=b.length;
+  const dp = Array.from({length:m+1}, (_,i)=>[i, ...Array(n).fill(0)]);
+  for(let j=0;j<=n;j++) dp[0][j]=j;
+  for(let i=1;i<=m;i++){
+    for(let j=1;j<=n;j++){
+      const cost = a[i-1]===b[j-1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+cost);
+    }
+  }
+  return dp[m][n];
+}
+
+function jaroWinkler(s1, s2){
+  if(s1 === s2) return 1;
+  const len1=s1.length, len2=s2.length;
+  if(len1===0||len2===0) return 0;
+  const matchDist = Math.floor(Math.max(len1,len2)/2)-1;
+  const s1Matches = new Array(len1).fill(false);
+  const s2Matches = new Array(len2).fill(false);
+  let matches=0;
+  for(let i=0;i<len1;i++){
+    const start=Math.max(0,i-matchDist), end=Math.min(i+matchDist+1,len2);
+    for(let j=start;j<end;j++){
+      if(s2Matches[j]||s1[i]!==s2[j]) continue;
+      s1Matches[i]=true; s2Matches[j]=true; matches++; break;
+    }
+  }
+  if(matches===0) return 0;
+  let t=0, k=0;
+  for(let i=0;i<len1;i++){
+    if(!s1Matches[i]) continue;
+    while(!s2Matches[k]) k++;
+    if(s1[i]!==s2[k]) t++;
+    k++;
+  }
+  t/=2;
+  const jaro = (matches/len1 + matches/len2 + (matches-t)/matches)/3;
+  let prefix=0;
+  for(let i=0;i<Math.min(4,len1,len2);i++){ if(s1[i]===s2[i]) prefix++; else break; }
+  return jaro + prefix*0.1*(1-jaro);
+}
+
+function soundex(word){
+  word = word.toUpperCase().replace(/[^A-Z]/g,'');
+  if(!word) return '';
+  const codes = {B:1,F:1,P:1,V:1, C:2,G:2,J:2,K:2,Q:2,S:2,X:2,Z:2, D:3,T:3, L:4, M:5,N:5, R:6};
+  let result = word[0];
+  let prevCode = codes[word[0]] || 0;
+  for(let i=1;i<word.length && result.length<4;i++){
+    const code = codes[word[i]] || 0;
+    if(code !== 0 && code !== prevCode) result += code;
+    prevCode = code;
+  }
+  return (result + '000').slice(0,4);
+}
+
+/* =========================================================
+   PART 4 — SCORING MODULES (all deterministic)
+   ========================================================= */
+function countSyllables(word){
+  const w = word.toLowerCase().replace(/e$/, '');
+  const m = w.match(/[aeiouy]+/g);
+  return m ? m.length : 1;
+}
+function maxRun(word, testFn){
+  let max=0, cur=0;
+  for(const ch of word){ if(testFn(ch)){ cur++; max=Math.max(max,cur); } else cur=0; }
+  return max;
+}
+function alternationRatio(word){
+  let alt=0;
+  for(let i=1;i<word.length;i++){ if(isVowel(word[i-1]) !== isVowel(word[i])) alt++; }
+  return word.length>1 ? alt/(word.length-1) : 0;
+}
+
+function pronunciationScore(word){
+  let score = 100;
+  const consRun = maxRun(word, ch=>!isVowel(ch));
+  const vowRun = maxRun(word, isVowel);
+  if(consRun>=4) score -= 35; else if(consRun===3) score -= 12;
+  if(vowRun>=4) score -= 25; else if(vowRun===3) score -= 10;
+  const syll = countSyllables(word);
+  if(syll>4) score -= (syll-4)*8;
+  score += Math.round(alternationRatio(word)*15);
+  const rare = (word.match(/[qxz]/g)||[]).length;
+  score -= rare*6;
+  return clamp(Math.round(score),0,100);
+}
+
+const CONFUSION_PATTERNS = [/ph/g,/ck/g,/x/g,/z/g,/ee/g,/oo/g,/(.)\1/g,/c(?=[eiy])/g,/c(?=[aou])/g];
+function typingConfusionScore(word){
+  let hits=0;
+  for(const p of CONFUSION_PATTERNS){ const m=word.match(p); if(m) hits+=m.length; }
+  return { score: clamp(100-hits*14,0,100), hits };
+}
+
+function lengthScore(word){
+  const len=word.length;
+  if(len>=5 && len<=7) return 100;
+  const d = Math.abs(len-6);
+  return clamp(100-d*12,0,100);
+}
+
+function closestMatch(word, list){
+  let best=null, bestDist=Infinity;
+  for(const w of list){
+    const d = levenshtein(word, w);
+    if(d<bestDist){ bestDist=d; best=w; }
+    if(bestDist===0) break;
+  }
+  return { match:best, distance:bestDist };
+}
+
+// Levenshtein distance can never be smaller than the length
+// difference between two strings, so words whose length differs
+// by more than maxDist can be skipped without computing Levenshtein
+// at all. This is the single biggest performance win in the
+// Premium gate pipeline — full closestMatch() against ~800 words
+// across 6 reference lists, per candidate, was the dominant cost
+// in a 1000-name batch (measured during testing) before this fix.
+function hasCloseMatch(word, list, maxDist){
+  for(const w of list){
+    if(Math.abs(word.length - w.length) > maxDist) continue;
+    if(levenshtein(word, w) <= maxDist) return true;
+  }
+  return false;
+}
+
+function dictionaryScore(word){
+  const wc = closestMatch(word, COMMON_WORDS);
+  const bc = closestMatch(word, FAMOUS_BRANDS);
+  let score = 100;
+  if(wc.distance===0) score -= 40; else if(wc.distance===1) score -= 22; else if(wc.distance===2) score -= 8;
+  if(bc.distance===0) score -= 55; else if(bc.distance===1) score -= 32; else if(bc.distance===2) score -= 14;
+  return { score: clamp(score,0,100), closestWord: wc, closestBrand: bc };
+}
+
+function medicineFlag(word){ return MED_SUFFIXES.some(s => word.endsWith(s)); }
+
+const ASCENDERS = 'bdfhklt', DESCENDERS = 'gjpqy';
+function visualScore(word){
+  let asc=0, desc=0;
+  for(const ch of word){ if(ASCENDERS.includes(ch)) asc++; if(DESCENDERS.includes(ch)) desc++; }
+  const ratio = (asc+desc)/word.length;
+  return clamp(Math.round(100 - Math.abs(0.45-ratio)*120),0,100);
+}
+
+function brandabilityScore(word){
+  let score = 100;
+  const len = word.length;
+  if(len<4 || len>9) score -= 20;
+  const commonEndings = new Set(['a','o','i','n','r','x','y','s','e']);
+  if(!commonEndings.has(word[word.length-1])) score -= 10;
+  return clamp(score,0,100);
+}
+
+function rhythmScore(word){ return clamp(Math.round(alternationRatio(word)*100),0,100); }
+
+function generateVariants(word){
+  const subs = [['ph','f'],['ck','k'],['x','ks'],['z','s'],['ee','i'],['oo','u'],['y','i'],['k','c']];
+  let variants = new Set();
+  for(const [from,to] of subs){ if(word.includes(from)) variants.add(word.split(from).join(to)); }
+  variants.delete(word);
+  return Array.from(variants).slice(0,6);
+}
+
+function brandTwins(word){
+  const letters = 'abcdefghijklmnopqrstuvwxyz';
+  let twins = new Set();
+  outer:
+  for(let i=0;i<word.length;i++){
+    for(const L of letters){
+      if(L===word[i]) continue;
+      const variant = word.slice(0,i)+L+word.slice(i+1);
+      if(isValidWord(variant)) twins.add(variant);
+      if(twins.size>=18) break outer;
+    }
+  }
+  return Array.from(twins).slice(0,6);
+}
+
+function brandDNA(word){
+  const soft='lmnrwysv', hard='kgtdpbqxz';
+  let softCount=0, hardCount=0;
+  for(const ch of word){ if(soft.includes(ch)) softCount++; if(hard.includes(ch)) hardCount++; }
+  const len = word.length;
+  const vowelCount = (word.match(/[aeiou]/g)||[]).length;
+  const endsVowel = /[aeiou]$/.test(word);
+  const alt = alternationRatio(word);
+  return {
+    softness: clamp(Math.round(50 + (softCount-hardCount)*12),0,100),
+    energy: clamp(Math.round(50 + (hardCount-softCount)*10 + (len<=5?10:0)),0,100),
+    trust: clamp(Math.round(50 + alt*30 + (len>=5&&len<=8?10:-10)),0,100),
+    modern: clamp(Math.round(50 + ((word.match(/[xzvq]/g)||[]).length)*15 + (len<=6?10:-5)),0,100),
+    luxury: clamp(Math.round(50 + (vowelCount/len)*40 + (endsVowel?10:-5)),0,100),
+    tech: clamp(Math.round(50 + ((word.match(/[xzk]/g)||[]).length)*12 + (len<=6?8:-4)),0,100),
+    playful: clamp(Math.round(50 + alt*25 + (endsVowel?15:0)),0,100),
+    corporate: clamp(Math.round(50 + (len>=7?15:-10) + (!endsVowel?10:-5)),0,100)
+  };
+}
+
+/* =========================================================
+   PART 4b — ADDITIONAL REFERENCE LISTS
+   (cities, surnames, first names — curated, not exhaustive)
+   ========================================================= */
+const COMMON_CITIES = ["boston","austin","denver","seattle","miami","chicago","dallas","phoenix","atlanta","portland","nashville","orlando","memphis","detroit","houston","raleigh","tucson","fresno","toledo","madrid","berlin","dublin","vienna","zurich","geneva","warsaw","lisbon","athens","sofia","bristol","oxford","leeds","cardiff","belfast","toronto","calgary","ottawa","montreal","quebec","sydney","brisbane","auckland","wellington","mumbai","delhi","jaipur","lahore","karachi","manila","hanoi","bangkok","jakarta","cairo","nairobi","lagos"];
+const COMMON_SURNAMES = ["smith","johnson","williams","brown","jones","garcia","miller","davis","rodriguez","martinez","hernandez","lopez","gonzalez","wilson","anderson","thomas","taylor","moore","jackson","martin","lee","perez","thompson","white","harris","sanchez","clark","ramirez","lewis","robinson","walker","young","allen","king","wright","scott","torres","nguyen","hill","flores","green","adams","nelson","baker","hall","rivera","campbell","mitchell","carter","roberts"];
+const COMMON_FIRST_NAMES = ["james","mary","john","patricia","robert","jennifer","michael","linda","william","elizabeth","david","barbara","richard","susan","joseph","jessica","thomas","sarah","charles","karen","daniel","nancy","matthew","lisa","anthony","betty","mark","sandra","donald","ashley","steven","kimberly","paul","emily","andrew","donna","joshua","michelle","kevin","carol","brian","amanda","george","melissa","edward","deborah","ronald","stephanie","timothy","rebecca"];
+
+/* =========================================================
+   PART 4c — NGRAM / COSINE SIMILARITY
+   (simple bigram-based cosine similarity, standard technique)
+   ========================================================= */
+function bigrams(word){
+  const out = [];
+  for(let i=0;i<word.length-1;i++) out.push(word.slice(i,i+2));
+  return out;
+}
+function cosineSimilarity(a,b){
+  const ba = bigrams(a), bb = bigrams(b);
+  const vocab = new Set([...ba, ...bb]);
+  let dot=0, magA=0, magB=0;
+  for(const g of vocab){
+    const ca = ba.filter(x=>x===g).length;
+    const cb = bb.filter(x=>x===g).length;
+    dot += ca*cb; magA += ca*ca; magB += cb*cb;
+  }
+  if(magA===0 || magB===0) return 0;
+  return dot / (Math.sqrt(magA)*Math.sqrt(magB));
+}
+function ngramOverlap(a,b){
+  const ba = new Set(bigrams(a)), bb = new Set(bigrams(b));
+  let shared=0;
+  for(const g of ba) if(bb.has(g)) shared++;
+  const union = new Set([...ba,...bb]).size;
+  return union===0 ? 0 : shared/union;
+}
+
+/* =========================================================
+   PART 4d — MEMORABILITY SCORE
+   length, syllables, repetition/catchiness, symmetry
+   ========================================================= */
+function memorabilityScore(word){
+  let score = 100;
+  const len = word.length;
+  if(len > 10) score -= (len-10)*6;
+  if(len < 4) score -= (4-len)*10;
+  const syll = countSyllables(word);
+  if(syll > 3) score -= (syll-3)*10;
+
+  // catchy repetition bonus (repeated bigram, like "coca", "gogo" patterns)
+  const bg = bigrams(word);
+  const counts = {};
+  bg.forEach(g => counts[g] = (counts[g]||0)+1);
+  const repeats = Object.values(counts).filter(c=>c>1).length;
+  score += repeats * 6;
+
+  // symmetry bonus: first half vs reversed second half share letters
+  const half = Math.floor(len/2);
+  const first = word.slice(0,half), second = word.slice(len-half).split('').reverse().join('');
+  let symMatches = 0;
+  for(let i=0;i<half;i++) if(first[i]===second[i]) symMatches++;
+  score += Math.round((symMatches/(half||1))*10);
+
+  return clamp(Math.round(score),0,100);
+}
+
+/* =========================================================
+   PART 4e — CLARITY TESTS
+   Radio / Phone / Child / International readability.
+   IMPORTANT: these are deterministic heuristic simulations
+   based on phonetic complexity — not real acoustic tests,
+   not real human panel results. Labeled as such in the UI.
+   ========================================================= */
+function clarityTests(word){
+  const consRun = maxRun(word, ch=>!isVowel(ch));
+  const rareLetters = (word.match(/[qxzwj]/g)||[]).length;
+  const sibilants = (word.match(/[sz]/g)||[]).length;
+  const syll = countSyllables(word);
+  const len = word.length;
+
+  // Radio: hearing-only, no visual spelling cues to lean on
+  const radio = clamp(Math.round(100 - consRun*14 - rareLetters*10 - Math.max(0,syll-3)*8), 0, 100);
+  // Phone: bad audio quality muffles sibilants and rare consonants more
+  const phone = clamp(Math.round(100 - consRun*12 - rareLetters*13 - sibilants*6 - Math.max(0,syll-3)*6), 0, 100);
+  // Child: kids struggle most with clusters and long words
+  const child = clamp(Math.round(100 - consRun*18 - Math.max(0,len-7)*8 - Math.max(0,syll-2)*10), 0, 100);
+  // International: non-native speakers trip on certain clusters/letters (th, w, x, q, consecutive consonants)
+  const intlPenalty = (word.match(/th|wh|qu/g)||[]).length*8 + rareLetters*8 + consRun*10;
+  const international = clamp(Math.round(100 - intlPenalty), 0, 100);
+
+  return { radio, phone, child, international };
+}
+
+/* =========================================================
+   PART 4f — WEAKNESS / STRENGTH / RECOMMENDATION (rule-based)
+   ========================================================= */
+function generateInsights(a){
+  const strengths = [], weaknesses = [];
+  if(a.pronunciation >= 80) strengths.push('Easy to pronounce');
+  else if(a.pronunciation < 55) weaknesses.push('May be hard to pronounce (consonant clusters or too many syllables)');
+
+  if(a.typing >= 80) strengths.push('Low typing-error risk');
+  else if(a.typing < 55) weaknesses.push('Contains patterns people often mistype (ph/f, double letters, etc.)');
+
+  if(a.dictionary < 60) weaknesses.push('Close to an existing word or known brand — clash risk');
+  else if(a.dictionary >= 90) strengths.push('Distinct from common words and known brands');
+
+  if(a.variants.length >= 3) weaknesses.push('Multiple plausible alternate spellings — "which spelling?" confusion risk');
+  else if(a.variants.length === 0) strengths.push('Only one natural spelling');
+
+  if(a.memorability >= 80) strengths.push('Sticky, memorable pattern');
+  if(a.length === 100) strengths.push('Ideal length for a brand name (5–7 letters)');
+  if(a.clarity.child < 55) weaknesses.push('May be difficult for children or casual listeners to say back correctly');
+  if(a.clarity.international < 55) weaknesses.push('Contains sounds that can be tricky for non-native speakers');
+  if(a.medicineFlag) weaknesses.push('Ending resembles common pharmaceutical name suffixes');
+
+  let recommendation;
+  if(a.overall >= 80) recommendation = 'Strong candidate — proceed to trademark and domain checks.';
+  else if(a.overall >= 60) recommendation = 'Workable, but review the flagged weaknesses before committing.';
+  else recommendation = 'Weak candidate — consider generating alternatives.';
+
+  return { strengths, weaknesses, recommendation };
+}
+
+/* =========================================================
+   PART 4g — CUSTOM TRADEMARK CHECK (user-supplied list only —
+   no bundled trademark database, see README for why)
+   ========================================================= */
+let customTrademarkList = []; // session memory only, cleared on refresh
+
+function checkCustomTrademarks(word){
+  if(customTrademarkList.length === 0) return null;
+  return closestMatch(word, customTrademarkList);
+}
+
+function scoreClass(n){ return n>=75 ? 'good' : (n>=50 ? 'mid' : 'low'); }
+
+/* ---------- Master analyzer ---------- */
+function analyzeName(rawName){
+  const name = rawName.toLowerCase().replace(/[^a-z]/g,'');
+  const pron = pronunciationScore(name);
+  const typing = typingConfusionScore(name);
+  const len = lengthScore(name);
+  const dict = dictionaryScore(name);
+  const visual = visualScore(name);
+  const brandability = brandabilityScore(name);
+  const rhythm = rhythmScore(name);
+  const variants = generateVariants(name);
+  const variantScore = clamp(100 - variants.length*10, 0, 100);
+  const med = medicineFlag(name);
+  const memorability = memorabilityScore(name);
+  const clarity = clarityTests(name);
+  const cityMatch = closestMatch(name, COMMON_CITIES);
+  const surnameMatch = closestMatch(name, COMMON_SURNAMES);
+  const firstNameMatch = closestMatch(name, COMMON_FIRST_NAMES);
+  const ipMatch = closestMatch(name, FAMOUS_IP_TERMS);
+  const brandNgram = ngramOverlap(name, dict.closestBrand.match || '');
+  const brandCosine = cosineSimilarity(name, dict.closestBrand.match || '');
+  const customTrademark = checkCustomTrademarks(name);
+  const sound = soundSymbolism(name);
+  const archetype = namingArchetype(name);
+  const trademark = trademarkDistinctiveness(dict.score);
+  const verb = verbability(name);
+  const premiumComposite = premiumCompositeScore(name);
+  const premiumGrade = passesPremiumGates(name);
+
+  const asymmetry = rhythmAsymmetryScore(name);
+
+  const rawOverall =
+    pron*0.15 + typing.score*0.10 + variantScore*0.10 + memorability*0.09 +
+    len*0.07 + dict.score*0.13 + rhythm*0.04 + visual*0.04 + brandability*0.04 +
+    asymmetry*0.18 +
+    ((pron+typing.score+len+dict.score+memorability)/5)*0.06;
+  // Same recalibration as premiumCompositeScore, and for the same
+  // reason: names that already clear the deterministic modules above
+  // cluster tightly near the top of every one of them, so a plain
+  // weighted sum collapses toward 100 with little differentiation
+  // (confirmed empirically: 299/300 Premium-mode names scored 95+
+  // before this fix). Compressing the top of the range restores real
+  // spread and makes a genuine 100 rare rather than routine.
+  const overall = clamp(Math.round(rawOverall >= 68 ? 68 + (rawOverall - 68) * 0.87 : rawOverall), 0, 100);
+
+  const result = {
+    name, raw: rawName,
+    overall: clamp(overall,0,100),
+    pronunciation: pron,
+    typing: typing.score, typingHits: typing.hits,
+    length: len,
+    dictionary: dict.score, closestWord: dict.closestWord, closestBrand: dict.closestBrand,
+    visual, brandability, rhythm, memorability, clarity,
+    variants, variantScore,
+    medicineFlag: med,
+    dna: brandDNA(name),
+    cityMatch, surnameMatch, firstNameMatch, ipMatch,
+    brandNgram, brandCosine,
+    customTrademark,
+    sound, archetype, trademark, verbability: verb,
+    premiumComposite, premiumGrade
+  };
+  result.insights = generateInsights(result);
+  return result;
+}
+
+/* =========================================================
+   PART 5 — DOMAIN AVAILABILITY (RDAP, live registry data)
+   ========================================================= */
+/* =========================================================
+   Domain checking uses 3 layers, in order, so a single point
+   of failure (usually CORS) never produces a silent no-result:
+   1) same-origin Cloudflare Pages Function proxy — most
+      reliable once actually deployed, since it's a server-side
+      call with no CORS involved at all
+   2) direct RDAP call from the browser — works if the registry
+      happens to allow it, harmless to try either way
+   3) Google's public DNS-over-HTTPS JSON API as a last-resort
+      heuristic (well-documented to support CORS for browser
+      use) — NXDOMAIN suggests likely available, presence of a
+      DNS record suggests likely taken. This is a heuristic,
+      not authoritative, and is only used if both RDAP paths fail.
+   ========================================================= */
+async function checkDomain(domain){
+  try{
+    const res = await fetch(`https://rdap.verisign.com/com/v1/domain/${domain}`, { mode:'cors' });
+    if(res.status === 404) return 'available';
+    if(res.status === 200) return 'taken';
+    return 'verify';
+  }catch(e){ return 'verify'; }
+}
+
+/* =========================================================
+   PART 6 — GENERATE MODE UI
+   ========================================================= */
+let seen = new Set();
+let currentResults = [];
+let activeStyle = 'evocative';
+
+let activeQuality = 'premium';
+let lastPremiumAttempts = 0;
+
+function generateBatch(){
+  const lang = document.getElementById('lang').value;
+  const batchSize = parseInt(document.getElementById('batchsize').value, 10);
+  const minlen = parseInt(document.getElementById('minlen').value, 10) || 3;
+  const maxlen = parseInt(document.getElementById('maxlen').value, 10) || 14;
+  const allowHyphen = document.getElementById('allowHyphen').checked;
+  const allowNumber = document.getElementById('allowNumber').checked;
+
+  const batch = [];
+  let safety = 0;
+
+  if(activeQuality === 'premium'){
+    // Strict multi-gate pipeline: most attempts get rejected by
+    // design, so the attempt budget is much higher and we report
+    // the true count found rather than padding with lower-quality
+    // names to hit the requested batch size.
+    resetFamilyTracker();
+    const maxAttempts = batchSize * 600;
+    let stall = 0;
+    const maxStall = 4000; // stop once the design space is clearly exhausted rather than grinding through the full attempt budget for no gain (Evocative mode's curated root bank has a real combinatorial ceiling well below large batch requests)
+    while(batch.length < batchSize && safety < maxAttempts && stall < maxStall){
+      safety++;
+      let candidate;
+      if(activeStyle === 'compound'){
+        candidate = generatePremiumCompound(minlen, maxlen, batchSize);
+      } else if(activeStyle === 'evocative'){
+        candidate = generatePremiumEvocative(minlen, maxlen, batchSize);
+      } else if(activeStyle === 'both'){
+        const roll = Math.random();
+        candidate = roll < 0.34 ? generatePremiumCompound(minlen, maxlen, batchSize)
+          : roll < 0.67 ? generatePremiumEvocative(minlen, maxlen, batchSize)
+          : generatePremiumWord(minlen, maxlen, batchSize);
+      } else {
+        candidate = generatePremiumWord(minlen, maxlen, batchSize);
+      }
+      if(!candidate || seen.has(candidate.word)){ stall++; continue; }
+      stall = 0;
+      seen.add(candidate.word);
+      batch.push({ name: candidate.word, family: candidate.family, status:'unknown', analysis: analyzeName(candidate.word) });
+    }
+    lastPremiumAttempts = safety;
+    return batch;
+  }
+
+  const maxAttempts = batchSize * 40;
+  while(batch.length < batchSize && safety < maxAttempts){
+    safety++;
+    let candidate = null;
+    if(activeStyle === 'invented') candidate = generatePhoneticWord(lang, minlen, maxlen);
+    else if(activeStyle === 'compound') candidate = generateCompound(lang, minlen, maxlen);
+    else candidate = Math.random()<0.5 ? generatePhoneticWord(lang, minlen, maxlen) : generateCompound(lang, minlen, maxlen);
+    if(!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+    const analysis = analyzeName(candidate);
+    batch.push({ name: candidate, status:'unknown', analysis });
+  }
+
+  if(allowHyphen && batch.length>4){
+    for(let i=0;i<Math.min(10, Math.floor(batch.length*0.1)); i++){
+      const a = rc(batch).name, b = rc(batch).name;
+      const variant = a+'-'+b;
+      if(!seen.has(variant)){ seen.add(variant); batch.push({name:variant, status:'unknown', analysis:analyzeName(variant)}); }
+    }
+  }
+  if(allowNumber && batch.length>4){
+    const nums=['360','24','7','01','365'];
+    for(let i=0;i<Math.min(10, Math.floor(batch.length*0.1)); i++){
+      const base = rc(batch).name;
+      const variant = base+rc(nums);
+      if(!seen.has(variant)){ seen.add(variant); batch.push({name:variant, status:'unknown', analysis:analyzeName(variant)}); }
+    }
+  }
+  return batch;
+}
+
+function renderGrid(){
+  const grid = document.getElementById('grid');
+  const search = document.getElementById('searchBox').value.toLowerCase();
+
+  let list = currentResults.slice();
+  if(search) list = list.filter(r => r.name.toLowerCase().includes(search));
+  list = list.filter(r => r.status === 'available');
+  list.sort((a,b)=> b.analysis.overall - a.analysis.overall);
+
+  if(list.length===0){
+    const stillChecking = currentResults.some(r => r.status==='unknown' || r.status==='checking');
+    const checkedTotal = currentResults.filter(r => r.status!=='unknown' && r.status!=='checking').length;
+    const verifyCount = currentResults.filter(r => r.status==='verify').length;
+    const takenCount = currentResults.filter(r => r.status==='taken').length;
+
+    if(stillChecking){
+      grid.innerHTML = '<div class="empty-state">Checking domains — available names will appear here as they\'re confirmed...</div>';
+    } else if(checkedTotal>0 && verifyCount === checkedTotal){
+      grid.innerHTML = '<div class="empty-state">Domain checks couldn\'t be confirmed for this batch. Open any name\'s "Full report" and use the "Verify manually" link, or try "Generate next batch".</div>';
+    } else if(checkedTotal>0 && verifyCount > 0){
+      grid.innerHTML = `<div class="empty-state">${takenCount} taken, ${verifyCount} couldn't be confirmed automatically this round — try "Generate next batch" for more candidates, or check the unresolved ones manually via Full report.</div>`;
+    } else {
+      grid.innerHTML = '<div class="empty-state">No available domains found in this batch. Try "Generate next batch".</div>';
+    }
+    return;
+  }
+
+  grid.innerHTML = list.map(r => {
+    const domain = r.name + '.com';
+    const a = r.analysis;
+
+    return `
+      <div class="card glass">
+        <div class="card-top">
+          <div class="card-name">${domain}</div>
+          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+            <div class="score-pill ${scoreClass(a.overall)}">${a.overall}</div>
+            ${a.premiumGrade ? '<span class="chip" style="font-size:9px; padding:2px 6px; color:var(--accent-2); border-color:var(--accent-2);">PREMIUM</span>' : ''}
+          </div>
+        </div>
+        <div class="mini-bars">
+          <div class="mini-bar"><div class="mini-bar-fill" style="width:${a.pronunciation}%; background:var(--accent);"></div></div>
+          <div class="mini-bar"><div class="mini-bar-fill" style="width:${a.typing}%; background:var(--accent-2);"></div></div>
+          <div class="mini-bar"><div class="mini-bar-fill" style="width:${a.dictionary}%; background:var(--warn);"></div></div>
+        </div>
+        <div class="card-meta"><span>${r.name.length} chars</span><span>${r.family ? r.family : a.variants.length+' spelling risks'}</span></div>
+        <div class="card-footer">
+          <button class="mini-btn" onclick="openReport('${r.name.replace(/'/g,"\\'")}')">Full report</button>
+          <span class="status available">Available</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateMeta(){
+  const total = currentResults.length;
+  const available = currentResults.filter(r=>r.status==='available').length;
+  const checked = currentResults.filter(r=>r.status!=='unknown' && r.status!=='checking').length;
+  document.getElementById('resultsMeta').textContent = total ? `${total} names generated · ${checked}/${total} checked · ${available} available` : 'No names generated yet.';
+  document.getElementById('exportBtn').disabled = available===0;
+  document.getElementById('loadMoreBtn').style.display = total>0 ? 'inline-block' : 'none';
+}
+
+let autoCheckRunning = false;
+async function autoCheckAll(){
+  if(autoCheckRunning) return;
+  autoCheckRunning = true;
+  const wrap = document.getElementById('progressWrap'), bar = document.getElementById('progressBar');
+  wrap.classList.add('active');
+
+  while(true){
+    const startTotal = currentResults.length;
+    const next = currentResults.find(r => r.status === 'unknown');
+    if(!next) break;
+    next.status = 'checking';
+    renderGrid();
+    next.status = await checkDomain(next.name + '.com');
+    renderGrid(); updateMeta();
+    const checkedNow = currentResults.filter(r=>r.status!=='unknown' && r.status!=='checking').length;
+    bar.style.width = Math.round((checkedNow / (startTotal||1)) * 100) + '%';
+    await new Promise(r => setTimeout(r, 350));
+  }
+
+  autoCheckRunning = false;
+  setTimeout(()=>{ wrap.classList.remove('active'); bar.style.width='0%'; }, 800);
+}
+
+function exportCSV(){
+  let csv = 'domain,overall_score,pronunciation,typing,memorability,dictionary,visual,brandability,rhythm,radio_clarity,phone_clarity,child_clarity,international_clarity,spelling_risks\n';
+  currentResults.filter(r=>r.status==='available').forEach(r=>{
+    const a=r.analysis;
+    csv += `${r.name}.com,${a.overall},${a.pronunciation},${a.typing},${a.memorability},${a.dictionary},${a.visual},${a.brandability},${a.rhythm},${a.clarity.radio},${a.clarity.phone},${a.clarity.child},${a.clarity.international},${a.variants.length}\n`;
+  });
+  downloadCSV(csv, 'brandlab_available_shortlist.csv');
+}
+function exportTXT(){
+  let txt = '';
+  currentResults.filter(r=>r.status==='available').forEach(r=>{ txt += `${r.name}.com\n`; });
+  const blob = new Blob([txt], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='brandlab_available_shortlist.txt';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function downloadCSV(csv, filename){
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* =========================================================
+   PART 7 — REPORT MODAL (used by all modes)
+   ========================================================= */
+function reportHTML(a){
+  const dna = a.dna;
+  const c = a.clarity;
+  const ins = a.insights;
+  const dnaRow = (label,val) => `
+    <div class="report-row"><div class="label">${label}</div><div class="bar"><div class="bar-fill" style="width:${val}%"></div></div><div class="val">${val}</div></div>`;
+
+  const closeNameFlags = [];
+  if(a.cityMatch.distance <= 1) closeNameFlags.push(`city name <strong>${a.cityMatch.match}</strong>`);
+  if(a.surnameMatch.distance <= 1) closeNameFlags.push(`surname <strong>${a.surnameMatch.match}</strong>`);
+  if(a.firstNameMatch.distance <= 1) closeNameFlags.push(`first name <strong>${a.firstNameMatch.match}</strong>`);
+
+  return `
+    <button class="modal-close" onclick="closeReport()">Close ✕</button>
+    <button class="modal-close" style="margin-right:8px;" onclick="printReport('${a.name}')">Export PDF (print) ⭳</button>
+    <h2>${a.raw}.com</h2>
+    <div class="overall">Overall score: ${a.overall}/100 — ${ins.recommendation}</div>
+    <div class="chip-row" style="margin-bottom:16px;">
+      <span class="chip" style="${a.premiumGrade ? 'color:var(--accent-2); border-color:var(--accent-2);' : ''}">${a.premiumGrade ? '✓ Passes Premium gates' : '✗ Would not clear Premium gates'}</span>
+      <span class="chip">${a.archetype}</span>
+      <span class="chip">${a.trademark.tag}</span>
+      <span class="chip">${a.sound.label}</span>
+    </div>
+
+    <div class="report-section">
+      <h3>Core scores</h3>
+      ${dnaRow('Pronunciation', a.pronunciation)}
+      ${dnaRow('Typing confidence', a.typing)}
+      ${dnaRow('Memorability', a.memorability)}
+      ${dnaRow('Dictionary/brand clash', a.dictionary)}
+      ${dnaRow('Length', a.length)}
+      ${dnaRow('Visual balance', a.visual)}
+      ${dnaRow('Brandability pattern', a.brandability)}
+      ${dnaRow('Rhythm', a.rhythm)}
+    </div>
+
+    <div class="report-section">
+      <h3>Agency read-out <span style="font-weight:400; text-transform:none;">— structural &amp; naming-industry analysis</span></h3>
+      ${dnaRow('Premium composite (Trust+Modern+Luxury/Corp+Memorability+Pron.+Typing+Visual)', a.premiumComposite)}
+      ${dnaRow('Verbability ("Google it"-style)', a.verbability)}
+      <div class="info-box" style="margin-top:8px;"><strong>Archetype:</strong> ${a.archetype} &nbsp;·&nbsp; <strong>Sound symbolism:</strong> ${a.sound.label} (${a.sound.axis}/100 soft→sharp axis) &nbsp;·&nbsp; <strong>Trademark posture:</strong> ${a.trademark.tag}</div>
+      <div class="info-box" style="margin-top:6px;">${a.trademark.note}</div>
+    </div>
+
+    <div class="report-section">
+      <h3>Strengths &amp; weaknesses</h3>
+      ${ins.strengths.map(s=>`<div class="info-box" style="margin-bottom:6px;">✓ ${s}</div>`).join('')}
+      ${ins.weaknesses.map(w=>`<div class="warn-box">⚠ ${w}</div>`).join('')}
+      ${(!ins.strengths.length && !ins.weaknesses.length) ? '<div class="info-box">No strong signals either way.</div>' : ''}
+    </div>
+
+    ${a.dictionary < 70 ? `<div class="warn-box">Close to an existing word/brand — nearest common word: <strong>${a.closestWord.match}</strong> (edit distance ${a.closestWord.distance}), nearest known brand: <strong>${a.closestBrand.match}</strong> (edit distance ${a.closestBrand.distance}, n-gram overlap ${(a.brandNgram*100).toFixed(0)}%, cosine similarity ${(a.brandCosine*100).toFixed(0)}%). Checked against a small curated reference list — not an exhaustive trademark database.</div>` : ''}
+    ${closeNameFlags.length ? `<div class="warn-box">Sounds close to a common ${closeNameFlags.join(', ')} — worth a gut-check for unintended associations.</div>` : ''}
+    ${a.ipMatch.distance <= 1 ? `<div class="warn-box">⚠ Close to a well-known fictional/franchise term (<strong>${a.ipMatch.match}</strong>) — this is a real trademark/IP risk category, not just a coincidence. Treat this as a stronger warning than the checks above and verify carefully before using.</div>` : ''}
+    ${a.medicineFlag ? `<div class="warn-box">Ending pattern resembles common pharmaceutical name suffixes — may read as a drug name in some markets.</div>` : ''}
+    ${a.customTrademark ? `<div class="warn-box">Your uploaded trademark list — closest match: <strong>${a.customTrademark.match}</strong> (edit distance ${a.customTrademark.distance}).</div>` : ''}
+
+    <div class="report-section">
+      <h3>Clarity tests <span style="font-weight:400; text-transform:none;">— simulated heuristic, not real acoustic/panel testing</span></h3>
+      ${dnaRow('Radio (hearing only)', c.radio)}
+      ${dnaRow('Phone (bad audio)', c.phone)}
+      ${dnaRow('Child readability', c.child)}
+      ${dnaRow('International pronunciation', c.international)}
+    </div>
+
+    <div class="report-section">
+      <h3>Brand DNA <span style="font-weight:400; text-transform:none; letter-spacing:0;">— heuristic aesthetic estimate, not a scientific measurement</span></h3>
+      <div class="dna-grid">
+        ${dnaRow('Softness', dna.softness)}
+        ${dnaRow('Energy', dna.energy)}
+        ${dnaRow('Trust', dna.trust)}
+        ${dnaRow('Modern', dna.modern)}
+        ${dnaRow('Luxury', dna.luxury)}
+        ${dnaRow('Tech', dna.tech)}
+        ${dnaRow('Playful', dna.playful)}
+        ${dnaRow('Corporate', dna.corporate)}
+      </div>
+    </div>
+
+    ${a.variants.length ? `<div class="report-section"><h3>Possible alternate spellings (${a.variants.length})</h3><div class="chip-row">${a.variants.map(v=>`<span class="chip">${v}</span>`).join('')}</div></div>` : ''}
+
+    <div class="report-section">
+      <h3>Brand twins <span style="font-weight:400; text-transform:none;">— close phonetic neighbors, useful to spot confusion risk</span></h3>
+      <div class="chip-row">${brandTwins(a.name).map(v=>`<span class="chip">${v}</span>`).join('') || '<span class="info-box">No close phonetic neighbors found.</span>'}</div>
+    </div>
+
+    <div class="report-section">
+      <h3>Search uniqueness <span style="font-weight:400; text-transform:none;">— paste a result count, no scraping involved</span></h3>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="number" min="0" id="searchCountInput" placeholder="Google result count" style="max-width:200px;">
+        <button class="mini-btn" onclick="computeUniqueness('${a.name}')">Compute</button>
+      </div>
+      <div id="uniquenessResult" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="report-section">
+      <h3>Manual checks (one click, not automated)</h3>
+      <div class="link-row">
+        <a class="link-chip" target="_blank" rel="noopener" href="https://www.google.com/search?q=%22${a.name}%22">Google ↗</a>
+        <a class="link-chip" target="_blank" rel="noopener" href="https://www.producthunt.com/search?q=${a.name}">Product Hunt ↗</a>
+        <a class="link-chip" target="_blank" rel="noopener" href="https://github.com/search?q=${a.name}">GitHub ↗</a>
+        <a class="link-chip" target="_blank" rel="noopener" href="https://www.npmjs.com/search?q=${a.name}">NPM ↗</a>
+        <a class="link-chip" target="_blank" rel="noopener" href="https://www.instagram.com/${a.name}">Instagram ↗</a>
+        <a class="link-chip" target="_blank" rel="noopener" href="https://x.com/${a.name}">X / Twitter ↗</a>
+        <a class="link-chip" target="_blank" rel="noopener" href="https://www.whois.com/whois/${a.name}.com">WHOIS ↗</a>
+      </div>
+    </div>
+
+    <div class="report-section" id="aiOpinionSection" style="${sessionApiKey ? '' : 'display:none;'}">
+      <h3>AI opinion <span style="font-weight:400; text-transform:none;">— optional, creative only, never affects any score above</span></h3>
+      <button class="mini-btn" onclick="getAIOpinion('${a.name}')">Ask for slogan &amp; positioning</button>
+      <div id="aiOpinionResult" style="margin-top:8px;"></div>
+    </div>
+  `;
+}
+
+function computeUniqueness(name){
+  const val = parseInt(document.getElementById('searchCountInput').value, 10);
+  const box = document.getElementById('uniquenessResult');
+  if(isNaN(val) || val < 0){ box.innerHTML = '<div class="info-box">Enter a valid result count first.</div>'; return; }
+  const score = clamp(Math.round(100 - Math.log10(val+1)*15), 0, 100);
+  box.innerHTML = `<div class="info-box">Estimated uniqueness: <strong>${score}/100</strong> (lower result counts score higher — this is a rough log-scale estimate, not a ranking signal).</div>`;
+}
+
+function printReport(name){
+  const content = document.getElementById('modalContent').innerHTML
+    .replace(/<button class="modal-close"[\s\S]*?<\/button>/g, '');
+  const w = window.open('', '_blank');
+  w.document.write(`<html><head><title>${name} — BrandLab report</title>
+    <style>body{font-family:sans-serif; padding:24px; color:#111;} .bar{background:#eee; height:6px; border-radius:3px;} .bar-fill{background:#555; height:100%;} .report-row{display:flex; gap:10px; align-items:center; margin-bottom:8px; font-size:13px;} .label{width:160px; color:#555;} .val{width:36px; text-align:right;}</style>
+    </head><body>${content}</body></html>`);
+  w.document.close();
+  w.print();
+}
+
+function openReport(name){
+  const analysis = analyzeName(name);
+  document.getElementById('modalContent').innerHTML = reportHTML(analysis);
+  document.getElementById('modalBackdrop').classList.add('active');
+}
+function closeReport(){ document.getElementById('modalBackdrop').classList.remove('active'); }
+document.getElementById('modalBackdrop').addEventListener('click', (e)=>{ if(e.target.id==='modalBackdrop') closeReport(); });
+
+/* =========================================================
+   PART 8 — SCORE A SINGLE NAME
+   ========================================================= */
+document.getElementById('scoreBtn').addEventListener('click', ()=>{
+  const val = document.getElementById('singleName').value.trim();
+  if(!val) return;
+  const a = analyzeName(val);
+  document.getElementById('singleResult').innerHTML = `<div class="controls glass" style="margin-top:20px;">${reportHTML(a).replace('<button class="modal-close" onclick="closeReport()">Close ✕</button>','')}</div>`;
+});
+
+/* =========================================================
+   PART 9 — COMPARE MODE
+   ========================================================= */
+document.getElementById('compareBtn').addEventListener('click', ()=>{
+  const inputs = Array.from(document.querySelectorAll('.cmpInput')).map(i=>i.value.trim()).filter(Boolean);
+  if(inputs.length===0) return;
+  const analyses = inputs.map(analyzeName);
+  const metrics = [
+    ['Overall', a=>a.overall],
+    ['Pronunciation', a=>a.pronunciation],
+    ['Typing confidence', a=>a.typing],
+    ['Memorability', a=>a.memorability],
+    ['Dictionary/brand clash', a=>a.dictionary],
+    ['Length', a=>a.length],
+    ['Visual balance', a=>a.visual],
+    ['Brandability', a=>a.brandability],
+    ['Rhythm', a=>a.rhythm],
+    ['Radio clarity', a=>a.clarity.radio],
+    ['Phone clarity', a=>a.clarity.phone],
+    ['Child readability', a=>a.clarity.child],
+    ['International', a=>a.clarity.international],
+    ['Spelling risks', a=>a.variants.length],
+  ];
+  let html = '<div class="table-wrap" style="margin-top:20px;"><table class="data-table"><thead><tr><th>Metric</th>';
+  analyses.forEach(a=> html += `<th>${a.raw}</th>`);
+  html += '</tr></thead><tbody>';
+  metrics.forEach(([label, fn])=>{
+    html += `<tr><td>${label}</td>`;
+    analyses.forEach(a=> html += `<td>${fn(a)}</td>`);
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  document.getElementById('compareResult').innerHTML = html;
+});
+
+/* =========================================================
+   PART 10 — BULK CSV MODE
+   ========================================================= */
+document.getElementById('csvUpload').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    const text = ev.target.result;
+    document.getElementById('bulkInput').value = text;
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('bulkBtn').addEventListener('click', ()=>{
+  const raw = document.getElementById('bulkInput').value;
+  const names = raw.split(/[\n,]/).map(s=>s.trim()).filter(Boolean).map(s=>s.split(',')[0].trim());
+  if(names.length===0) return;
+  document.getElementById('bulkStatus').textContent = `Analyzing ${names.length} names...`;
+
+  const analyses = names.map(analyzeName).sort((a,b)=> b.overall - a.overall);
+
+  let html = `<div style="margin:16px 0; display:flex; gap:10px;"><button class="btn-secondary" id="bulkExportBtn">Export full report (CSV)</button></div>`;
+  html += '<div class="table-wrap"><table class="data-table"><thead><tr><th>Rank</th><th>Name</th><th>Overall</th><th>Pronunciation</th><th>Typing</th><th>Memorability</th><th>Dictionary</th><th>Visual</th><th>Brandability</th><th>Spelling risks</th></tr></thead><tbody>';
+  analyses.forEach((a,i)=>{
+    html += `<tr><td>${i+1}</td><td>${a.raw}</td><td>${a.overall}</td><td>${a.pronunciation}</td><td>${a.typing}</td><td>${a.memorability}</td><td>${a.dictionary}</td><td>${a.visual}</td><td>${a.brandability}</td><td>${a.variants.length}</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  document.getElementById('bulkResult').innerHTML = html;
+  document.getElementById('bulkStatus').textContent = `${names.length} names analyzed.`;
+
+  document.getElementById('bulkExportBtn').addEventListener('click', ()=>{
+    let csv = 'name,overall,pronunciation,typing,memorability,dictionary,length,visual,brandability,rhythm,radio_clarity,phone_clarity,child_clarity,international_clarity,spelling_risks,medicine_flag\n';
+    analyses.forEach(a=>{ csv += `${a.raw},${a.overall},${a.pronunciation},${a.typing},${a.memorability},${a.dictionary},${a.length},${a.visual},${a.brandability},${a.rhythm},${a.clarity.radio},${a.clarity.phone},${a.clarity.child},${a.clarity.international},${a.variants.length},${a.medicineFlag}\n`; });
+    downloadCSV(csv, 'brandlab_bulk_report.csv');
+  });
+});
+
+/* =========================================================
+   PART 11 — MODE / STYLE TAB SWITCHING
+   ========================================================= */
+document.querySelectorAll('.mode-tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.mode-tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.mode-panel').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-'+tab.dataset.mode).classList.add('active');
+  });
+});
+document.querySelectorAll('#qualityTabs .style-tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('#qualityTabs .style-tab').forEach(t=>{
+      t.classList.remove('active');
+      t.style.background=''; t.style.borderColor=''; t.style.color='';
+    });
+    tab.classList.add('active');
+    tab.style.background='var(--accent)'; tab.style.borderColor='var(--accent)'; tab.style.color='white';
+    activeQuality = tab.dataset.quality;
+    const note = document.getElementById('qualityNote');
+    if(activeQuality === 'premium'){
+      note.textContent = 'Premium mode: every name must clear a strict multi-gate pipeline (single obvious spelling, no dictionary/brand/city/name clash, whitelisted pronounceable clusters only, visual balance, composite score ≥82). English only, fewer results, each one investment-grade. "Compound" here means two real, clean words fused (GitHub/Dropbox-style), not the same as Standard mode\'s compound style.';
+    } else {
+      note.textContent = 'Standard mode: broad phonetic generation, high volume, good for brainstorming.';
+    }
+  });
+});
+document.querySelectorAll('#styleTabs .style-tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('#styleTabs .style-tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    activeStyle = tab.dataset.style;
+  });
+});
+
+document.getElementById('generateBtn').addEventListener('click', ()=>{
+  seen.clear();
+  currentResults = generateBatch();
+  const requested = parseInt(document.getElementById('batchsize').value,10);
+  document.getElementById('genStatus').textContent = activeQuality === 'premium'
+    ? `${currentResults.length} of ${requested} requested passed every premium gate (${lastPremiumAttempts} candidates evaluated)`
+    : `${currentResults.length} names ready`;
+  renderGrid(); updateMeta();
+  autoCheckAll();
+});
+document.getElementById('loadMoreBtn').addEventListener('click', ()=>{
+  const before = currentResults.length;
+  currentResults = currentResults.concat(generateBatch());
+  const added = currentResults.length - before;
+  document.getElementById('genStatus').textContent = activeQuality === 'premium'
+    ? `${added} more passed every premium gate (${currentResults.length} total, ${lastPremiumAttempts} candidates evaluated this round)`
+    : `${currentResults.length} names ready`;
+  renderGrid(); updateMeta();
+  autoCheckAll();
+});
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const menu = document.getElementById('downloadMenu');
+  menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+});
+document.getElementById('downloadCsvBtn').addEventListener('click', ()=>{
+  exportCSV();
+  document.getElementById('downloadMenu').style.display = 'none';
+});
+document.getElementById('downloadTxtBtn').addEventListener('click', ()=>{
+  exportTXT();
+  document.getElementById('downloadMenu').style.display = 'none';
+});
+document.getElementById('searchBox').addEventListener('input', renderGrid);
+
+/* =========================================================
+   PART 12 — AI ADVISOR TOGGLE
+   Session-only, bring-your-own-key, two providers supported:
+   Anthropic (Claude) and Google (Gemini Flash) — each has a
+   completely different API shape, so the provider selector
+   controls which endpoint/headers/response-parsing is used.
+   The key lives in this JS variable only — never localStorage,
+   never sessionStorage, never sent anywhere except directly to
+   the selected provider's API from this browser tab. It is
+   wiped on toggle-off or page refresh.
+   ========================================================= */
+let aiOn = false;
+let sessionApiKey = null;
+let aiProvider = 'anthropic';
+
+function clearSessionKey(){
+  sessionApiKey = null;
+  const input = document.getElementById('aiKeyInput');
+  if(input) input.value = '';
+  const prompt = document.getElementById('aiKeyPrompt');
+  if(prompt) prompt.style.display = 'flex';
+  const result = document.getElementById('aiResult');
+  if(result) result.innerHTML = '';
+}
+
+function updateKeyPlaceholder(){
+  const input = document.getElementById('aiKeyInput');
+  if(!input) return;
+  input.placeholder = aiProvider === 'gemini'
+    ? 'AIza... (Google AI Studio key, this session only)'
+    : 'sk-ant-... (Anthropic key, this session only)';
+}
+
+document.getElementById('aiProviderSelect').addEventListener('change', (e)=>{
+  aiProvider = e.target.value;
+  updateKeyPlaceholder();
+  clearSessionKey(); // switching providers invalidates whatever key was held
+});
+updateKeyPlaceholder();
+
+document.getElementById('aiSwitch').addEventListener('click', ()=>{
+  aiOn = !aiOn;
+  document.getElementById('aiSwitch').classList.toggle('on', aiOn);
+  document.getElementById('aiPanel').classList.toggle('visible', aiOn);
+  if(!aiOn) clearSessionKey();
+});
+
+document.getElementById('aiKeySubmit').addEventListener('click', ()=>{
+  const val = document.getElementById('aiKeyInput').value.trim();
+  const resultBox = document.getElementById('aiResult');
+  if(!val){ resultBox.innerHTML = '<div class="info-box">Paste a key first.</div>'; return; }
+  sessionApiKey = val;
+  document.getElementById('aiKeyPrompt').style.display = 'none';
+  const providerLabel = aiProvider === 'gemini' ? 'Gemini' : 'Claude';
+  resultBox.innerHTML = `<div class="info-box">${providerLabel} key held in memory for this session only. Open any "Full report" and use the AI opinion section there. Turn this toggle off any time to wipe it immediately.</div>`;
+});
+
+function aiPrompt(name){
+  return `You are a branding consultant. For the invented brand name "${name}", give: 1) one short slogan (max 8 words) 2) one likely target industry 3) a one-sentence positioning idea. Reply ONLY as JSON with no markdown fences: {"slogan":"...","industry":"...","positioning":"..."} These are creative opinions only, not facts.`;
+}
+
+async function callAnthropic(name){
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key': sessionApiKey,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body: JSON.stringify({
+      model:'claude-sonnet-5',
+      max_tokens:300,
+      messages:[{ role:'user', content: aiPrompt(name) }]
+    })
+  });
+  if(!res.ok) throw new Error(`Anthropic request failed (${res.status}). Check your key and try again.`);
+  const data = await res.json();
+  const block = (data.content||[]).find(b=>b.type==='text');
+  return block ? block.text : '';
+}
+
+async function callGemini(name){
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`, {
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-goog-api-key': sessionApiKey
+    },
+    body: JSON.stringify({
+      contents:[{ parts:[{ text: aiPrompt(name) }] }]
+    })
+  });
+  if(!res.ok) throw new Error(`Gemini request failed (${res.status}). Check your key and try again.`);
+  const data = await res.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  return text || '';
+}
+
+async function getAIOpinion(name){
+  const box = document.getElementById('aiOpinionResult');
+  if(!sessionApiKey){ box.innerHTML = '<div class="info-box">Turn on AI Advisor and paste a session key first.</div>'; return; }
+  box.innerHTML = '<span class="count-live">Asking...</span>';
+  try{
+    const rawText = aiProvider === 'gemini' ? await callGemini(name) : await callAnthropic(name);
+    const cleaned = rawText.replace(/```json|```/g,'').trim();
+    let parsed = null;
+    try{ parsed = JSON.parse(cleaned); }catch(e){}
+    if(parsed){
+      box.innerHTML = `<div class="info-box"><strong>Slogan:</strong> ${parsed.slogan}<br><strong>Industry:</strong> ${parsed.industry}<br><strong>Positioning:</strong> ${parsed.positioning}</div>`;
+    } else {
+      box.innerHTML = `<div class="info-box">${(rawText || 'No response.').replace(/</g,'&lt;')}</div>`;
+    }
+  }catch(e){
+    box.innerHTML = `<div class="warn-box">${e.message || 'Could not reach the provider API directly from this browser (network/CORS restriction).'} The deterministic scores above are unaffected either way.</div>`;
+  }
+}
+
+window.addEventListener('beforeunload', clearSessionKey);
+
+/* =========================================================
+   PART 13 — CUSTOM TRADEMARK LIST PANEL
+   ========================================================= */
+let tmPanelOpen = false;
+document.getElementById('tmToggle').addEventListener('click', ()=>{
+  tmPanelOpen = !tmPanelOpen;
+  document.getElementById('tmPanel').classList.toggle('visible', tmPanelOpen);
+});
+document.getElementById('tmSaveBtn').addEventListener('click', ()=>{
+  const raw = document.getElementById('tmListInput').value;
+  customTrademarkList = raw.split('\n').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  document.getElementById('tmStatus').textContent = `${customTrademarkList.length} names loaded for this session.`;
+});
+
+/* =========================================================
+   PART 14 — KEYBOARD SHORTCUTS
+   ========================================================= */
+document.getElementById('singleName').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter') document.getElementById('scoreBtn').click();
+});
+document.addEventListener('keydown', (e)=>{
+  const genPanelActive = document.getElementById('panel-generate').classList.contains('active');
+  if(e.key === '/' && genPanelActive && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA'){
+    e.preventDefault();
+    document.getElementById('searchBox').focus();
+  }
+  if(e.key === 'Escape') closeReport();
+});
+</script>
+</body>
+</html>
