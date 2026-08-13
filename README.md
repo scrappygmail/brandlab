@@ -2,7 +2,7 @@
 
 A deterministic brand-name generation and scoring engine. Generates pronounceable, brandable names — or scores any name you already have — across a set of explainable, algorithmic dimensions. Runs entirely in the browser: no backend, no database, and no AI required for any score.
 
-**Live demo:** https://domain.brandlab.workers.dev/
+**Live demo:** https://brandlab.pages.dev/
 
 Part of the [JafriLabs](https://github.com/jafri101/jafrilabs) portfolio. Built by [Asad Jafri](https://www.linkedin.com/in/jafri101/).
 
