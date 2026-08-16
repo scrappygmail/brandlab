@@ -282,6 +282,18 @@
         <label for="aiConceptInput">Describe your business in one line — AI generates names for it (needs AI Advisor turned on above, with a key entered)</label>
         <input type="text" id="aiConceptInput" placeholder="e.g. an app that helps freelancers send invoices fast">
       </div>
+      <div class="controls-grid" style="margin-top:10px;">
+        <div class="field"><label for="aiConceptCount">How many names</label>
+          <select id="aiConceptCount">
+            <option value="15" selected>15 — one AI call</option>
+            <option value="50">50 — ~2 AI calls</option>
+            <option value="100">100 — ~4 AI calls</option>
+            <option value="250">250 — ~10 AI calls</option>
+            <option value="500">500 — ~20 AI calls</option>
+          </select>
+        </div>
+      </div>
+      <p style="color:var(--muted); font-size:12px; margin:8px 0 0;">Larger counts ask the AI in batches of 25 (one big request would just get cut off mid-reply and fail entirely). Each batch is a separate billed API call on your own key, and your provider's rate limit applies — if a batch gets rate-limited or errors out, whatever was already generated stays, and the run just stops there.</p>
       <div class="actions">
         <button class="btn-secondary" id="aiConceptBtn">Generate names with AI</button>
         <span class="count-live" id="aiConceptStatus"></span>
@@ -2230,52 +2242,80 @@ async function callAIRaw(prompt, maxTokens){
   return block ? block.text : '';
 }
 
-function aiConceptPromptText(desc){
+function aiConceptPromptText(desc, count, avoidList){
+  const avoid = avoidList.length ? `\nDo NOT reuse any of these already-suggested names: ${avoidList.join(', ')}.` : '';
   return `You are a creative naming consultant in the style of the people who named Stripe, Notion, and Canva. A founder describes their business as: "${desc}".
 
-Generate 15 invented, brandable, single-word company name candidates that fit this business — short, punchy, easy to say out loud, easy to spell after hearing it once. Prefer real-word blends and lightly reshaped real words over pure gibberish. Each candidate: lowercase letters only, no spaces or hyphens, 4-10 characters, not an existing famous brand, not a plain dictionary word used literally.
+Generate exactly ${count} invented, brandable, single-word company name candidates that fit this business — short, punchy, easy to say out loud, easy to spell after hearing it once. Prefer real-word blends and lightly reshaped real words over pure gibberish. Each candidate: lowercase letters only, no spaces or hyphens, 4-10 characters, not an existing famous brand, not a plain dictionary word used literally.${avoid}
 
-Reply ONLY as a JSON array, no markdown fences, no commentary:
+Reply ONLY as a JSON array of exactly ${count} items, no markdown fences, no commentary:
 [{"name":"lumaro","reason":"under 12 words, why it fits"}, ...]`;
+}
+
+function ingestAIConceptBatch(parsed){
+  let added = 0, rejected = 0;
+  parsed.forEach(item=>{
+    const name = (item.name || '').toString().toLowerCase().replace(/[^a-z]/g,'');
+    if(!name || seen.has(name)) return;
+    // Same gates every deterministically-generated name goes through —
+    // AI creativity doesn't get a pass on quality or safety checks.
+    if(name.length < 3 || name.length > 14){ rejected++; return; }
+    if(!isValidWord(name)){ rejected++; return; }
+    if(hasCloseMatch(name, FAMOUS_BRANDS, 1)){ rejected++; return; }
+    if(hasCloseMatch(name, FAMOUS_IP_TERMS, 1)){ rejected++; return; }
+    if(medicineFlag(name)){ rejected++; return; }
+    seen.add(name);
+    const analysis = analyzeName(name);
+    analysis.aiReason = (item.reason || '').toString().slice(0,140);
+    currentResults.push({ name, family:'AI concept', status:'unknown', analysis });
+    added++;
+  });
+  return { added, rejected };
 }
 
 document.getElementById('aiConceptBtn').addEventListener('click', async ()=>{
   const status = document.getElementById('aiConceptStatus');
   const desc = document.getElementById('aiConceptInput').value.trim();
+  const totalWanted = parseInt(document.getElementById('aiConceptCount').value, 10) || 15;
   if(!sessionApiKey){ status.textContent = 'Turn on AI Advisor above and paste a session key first.'; return; }
   if(!desc){ status.textContent = 'Describe the business first.'; return; }
-  status.textContent = 'Asking AI for candidates...';
-  try{
-    const raw = await callAIRaw(aiConceptPromptText(desc), 1000);
+
+  const CHUNK = 25;
+  const chunks = Math.ceil(totalWanted / CHUNK);
+  let totalAdded = 0, totalRejected = 0;
+  // Only send the AI the last ~40 names as "already used" context, not
+  // the full running total — keeps the prompt small even at 500 names,
+  // real de-duplication still happens locally via `seen` either way.
+  let recentNames = [];
+
+  for(let i = 0; i < chunks; i++){
+    const thisChunkSize = Math.min(CHUNK, totalWanted - i * CHUNK);
+    status.textContent = `Batch ${i+1}/${chunks} — ${totalAdded} added so far...`;
+    let raw;
+    try{
+      raw = await callAIRaw(aiConceptPromptText(desc, thisChunkSize, recentNames), thisChunkSize * 60);
+    }catch(e){
+      status.textContent = `Stopped after batch ${i}/${chunks} (${totalAdded} added) — ${e.message || 'provider error'}. Whatever was generated is already in the grid below.`;
+      renderGrid(); updateMeta(); autoCheckAll();
+      return;
+    }
     const cleaned = raw.replace(/```json|```/g,'').trim();
     let parsed;
-    try{ parsed = JSON.parse(cleaned); }catch(e){ status.textContent = "AI reply wasn't valid JSON this time — try again."; return; }
-    if(!Array.isArray(parsed)) { status.textContent = 'Unexpected AI reply shape — try again.'; return; }
-
-    let added = 0, rejected = 0;
-    parsed.forEach(item=>{
-      const name = (item.name || '').toString().toLowerCase().replace(/[^a-z]/g,'');
-      if(!name || seen.has(name)) return;
-      // Same gates every deterministically-generated name goes through —
-      // AI creativity doesn't get a pass on quality or safety checks.
-      if(name.length < 3 || name.length > 14){ rejected++; return; }
-      if(!isValidWord(name)){ rejected++; return; }
-      if(hasCloseMatch(name, FAMOUS_BRANDS, 1)){ rejected++; return; }
-      if(hasCloseMatch(name, FAMOUS_IP_TERMS, 1)){ rejected++; return; }
-      if(medicineFlag(name)){ rejected++; return; }
-      seen.add(name);
-      const analysis = analyzeName(name);
-      analysis.aiReason = (item.reason || '').toString().slice(0,140);
-      currentResults.push({ name, family:'AI concept', status:'unknown', analysis });
-      added++;
-    });
-
-    status.textContent = `${added} AI candidates added${rejected ? ` (${rejected} filtered out by the usual gates)` : ''} — checking domains...`;
+    try{ parsed = JSON.parse(cleaned); }catch(e){ parsed = null; }
+    if(!Array.isArray(parsed)){
+      status.textContent = `Batch ${i+1} reply wasn't valid JSON — stopping here (${totalAdded} added so far, kept below).`;
+      renderGrid(); updateMeta(); autoCheckAll();
+      return;
+    }
+    const { added, rejected } = ingestAIConceptBatch(parsed);
+    totalAdded += added; totalRejected += rejected;
+    recentNames = parsed.map(p => (p.name||'').toString().toLowerCase()).slice(-40);
     renderGrid(); updateMeta();
-    autoCheckAll();
-  }catch(e){
-    status.textContent = e.message || 'Could not reach the AI provider from this browser.';
+    if(chunks > 1 && i < chunks - 1) await new Promise(r => setTimeout(r, 400)); // be gentle on rate limits
   }
+
+  status.textContent = `${totalAdded} AI candidates added${totalRejected ? ` (${totalRejected} filtered out by the usual gates)` : ''} — checking domains...`;
+  autoCheckAll();
 });
 
 document.getElementById('aiRankBtn').addEventListener('click', async ()=>{
