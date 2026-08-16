@@ -283,17 +283,17 @@
         <input type="text" id="aiConceptInput" placeholder="e.g. an app that helps freelancers send invoices fast">
       </div>
       <div class="controls-grid" style="margin-top:10px;">
-        <div class="field"><label for="aiConceptCount">How many names</label>
+        <div class="field"><label for="aiConceptCount">How many names (target — AI keeps retrying past filter rejections until it hits this)</label>
           <select id="aiConceptCount">
-            <option value="15" selected>15 — one AI call</option>
-            <option value="50">50 — ~2 AI calls</option>
-            <option value="100">100 — ~4 AI calls</option>
-            <option value="250">250 — ~10 AI calls</option>
-            <option value="500">500 — ~20 AI calls</option>
+            <option value="15" selected>15</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="250">250</option>
+            <option value="500">500</option>
           </select>
         </div>
       </div>
-      <p style="color:var(--muted); font-size:12px; margin:8px 0 0;">Larger counts ask the AI in batches of 25 (one big request would just get cut off mid-reply and fail entirely). Each batch is a separate billed API call on your own key, and your provider's rate limit applies — if a batch gets rate-limited or errors out, whatever was already generated stays, and the run just stops there.</p>
+      <p style="color:var(--muted); font-size:12px; margin:8px 0 0;">Asks the AI in batches of 25 raw candidates at a time and keeps calling — up to a safety cap — until enough survive the same gates every other name here has to pass. Most raw AI suggestions get rejected, same as the deterministic engine, so hitting a bigger target means more calls, not just one bigger request. Each call is billed on your own key and subject to your provider's rate limit; if it stalls, whatever already passed stays in the grid.</p>
       <div class="actions">
         <button class="btn-secondary" id="aiConceptBtn">Generate names with AI</button>
         <span class="count-live" id="aiConceptStatus"></span>
@@ -2280,22 +2280,31 @@ document.getElementById('aiConceptBtn').addEventListener('click', async ()=>{
   if(!sessionApiKey){ status.textContent = 'Turn on AI Advisor above and paste a session key first.'; return; }
   if(!desc){ status.textContent = 'Describe the business first.'; return; }
 
+  // We ask for CHUNK raw names per call, but the gates (same ones the
+  // deterministic engine uses) reject a large share of them — that's
+  // exactly why "Generate first batch" often shows far fewer names
+  // than the batch size. So this loop doesn't stop once it's SENT
+  // enough requests for totalWanted — it keeps calling, always asking
+  // for a fresh CHUNK of raw candidates, until totalWanted candidates
+  // have actually SURVIVED the gates. maxCalls is just a safety
+  // ceiling so a bad description (or very strict gates) can't spin
+  // forever running up API calls.
   const CHUNK = 25;
-  const chunks = Math.ceil(totalWanted / CHUNK);
-  let totalAdded = 0, totalRejected = 0;
+  const maxCalls = Math.min(40, Math.max(6, Math.ceil(totalWanted / CHUNK) * 5));
+  let totalAdded = 0, totalRejected = 0, callsMade = 0;
   // Only send the AI the last ~40 names as "already used" context, not
   // the full running total — keeps the prompt small even at 500 names,
   // real de-duplication still happens locally via `seen` either way.
   let recentNames = [];
 
-  for(let i = 0; i < chunks; i++){
-    const thisChunkSize = Math.min(CHUNK, totalWanted - i * CHUNK);
-    status.textContent = `Batch ${i+1}/${chunks} — ${totalAdded} added so far...`;
+  while(totalAdded < totalWanted && callsMade < maxCalls){
+    callsMade++;
+    status.textContent = `Call ${callsMade}/${maxCalls} — ${totalAdded}/${totalWanted} kept so far (rest rejected by the gates, still trying)...`;
     let raw;
     try{
-      raw = await callAIRaw(aiConceptPromptText(desc, thisChunkSize, recentNames), thisChunkSize * 60);
+      raw = await callAIRaw(aiConceptPromptText(desc, CHUNK, recentNames), CHUNK * 60);
     }catch(e){
-      status.textContent = `Stopped after batch ${i}/${chunks} (${totalAdded} added) — ${e.message || 'provider error'}. Whatever was generated is already in the grid below.`;
+      status.textContent = `Stopped after ${callsMade} calls (${totalAdded}/${totalWanted} added) — ${e.message || 'provider error'}. Whatever was generated is already in the grid below.`;
       renderGrid(); updateMeta(); autoCheckAll();
       return;
     }
@@ -2303,7 +2312,7 @@ document.getElementById('aiConceptBtn').addEventListener('click', async ()=>{
     let parsed;
     try{ parsed = JSON.parse(cleaned); }catch(e){ parsed = null; }
     if(!Array.isArray(parsed)){
-      status.textContent = `Batch ${i+1} reply wasn't valid JSON — stopping here (${totalAdded} added so far, kept below).`;
+      status.textContent = `Call ${callsMade} reply wasn't valid JSON — stopping here (${totalAdded}/${totalWanted} added, kept below).`;
       renderGrid(); updateMeta(); autoCheckAll();
       return;
     }
@@ -2311,10 +2320,12 @@ document.getElementById('aiConceptBtn').addEventListener('click', async ()=>{
     totalAdded += added; totalRejected += rejected;
     recentNames = parsed.map(p => (p.name||'').toString().toLowerCase()).slice(-40);
     renderGrid(); updateMeta();
-    if(chunks > 1 && i < chunks - 1) await new Promise(r => setTimeout(r, 400)); // be gentle on rate limits
+    if(totalAdded < totalWanted && callsMade < maxCalls) await new Promise(r => setTimeout(r, 400)); // be gentle on rate limits
   }
 
-  status.textContent = `${totalAdded} AI candidates added${totalRejected ? ` (${totalRejected} filtered out by the usual gates)` : ''} — checking domains...`;
+  status.textContent = totalAdded >= totalWanted
+    ? `${totalAdded} AI candidates added${totalRejected ? ` (${totalRejected} more were tried and filtered out)` : ''} — checking domains...`
+    : `${totalAdded}/${totalWanted} added — stopped after ${callsMade} calls (safety cap), the description may be too restrictive for more to pass. Checking domains on what's here...`;
   autoCheckAll();
 });
 
