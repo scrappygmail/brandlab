@@ -277,12 +277,24 @@
       </div>
     </div>
 
+    <div class="controls glass" id="aiConceptBox">
+      <div class="field">
+        <label for="aiConceptInput">Describe your business in one line — AI generates names for it (needs AI Advisor turned on above, with a key entered)</label>
+        <input type="text" id="aiConceptInput" placeholder="e.g. an app that helps freelancers send invoices fast">
+      </div>
+      <div class="actions">
+        <button class="btn-secondary" id="aiConceptBtn">Generate names with AI</button>
+        <span class="count-live" id="aiConceptStatus"></span>
+      </div>
+    </div>
+
     <section class="results-bar">
       <div><h2 class="results-title">Results</h2><p class="results-meta" id="resultsMeta">No names generated yet.</p></div>
     </section>
 
     <div class="filter-row">
       <input type="text" id="searchBox" placeholder="Filter by text...">
+      <button class="btn-secondary" id="aiRankBtn">Ask AI to rank top picks</button>
       <div style="position:relative; margin-left:auto;">
         <button class="btn-secondary" id="exportBtn" disabled>Download</button>
         <div id="downloadMenu" style="display:none; position:absolute; right:0; top:calc(100% + 6px); background:var(--glass-strong); border:1px solid var(--line); border-radius:10px; padding:6px; z-index:10; backdrop-filter:blur(20px);">
@@ -291,6 +303,7 @@
         </div>
       </div>
     </div>
+    <div id="aiRankResult"></div>
 
     <div class="progress-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
     <div class="grid" id="grid"><div class="empty-state">Pick a style above and hit "Generate first batch" to start.</div></div>
@@ -1676,12 +1689,13 @@ function renderGrid(){
     const a = r.analysis;
 
     return `
-      <div class="card glass">
+      <div class="card glass" ${a.aiReason ? `title="${a.aiReason.replace(/"/g,'&quot;')}"` : ''}>
         <div class="card-top">
           <div class="card-name">${domain}</div>
           <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
             <div class="score-pill ${scoreClass(a.overall)}">${a.overall}</div>
             ${a.premiumGrade ? '<span class="chip" style="font-size:9px; padding:2px 6px; color:var(--accent-2); border-color:var(--accent-2);">PREMIUM</span>' : ''}
+            ${r.family === 'AI concept' ? '<span class="chip" style="font-size:9px; padding:2px 6px; color:#a78bfa; border-color:#a78bfa;">AI</span>' : ''}
           </div>
         </div>
         <div class="mini-bars">
@@ -2175,6 +2189,116 @@ async function getAIOpinion(name){
 }
 
 window.addEventListener('beforeunload', clearSessionKey);
+
+/* =========================================================
+   PART 12b — AI CONCEPT GENERATOR + AI SHORTLIST RANKING
+   Two genuinely AI-driven features, both reusing the same
+   session key already entered above. Nothing here runs unless
+   the person turns AI Advisor on and pastes a key — every
+   deterministic score and the domain-check pipeline are
+   unaffected either way.
+   ========================================================= */
+
+// Generic raw call — separate from callAnthropic/callGemini above
+// (which are wired specifically to the single-name slogan prompt)
+// so these two new features can send their own longer prompts
+// without touching that existing code path.
+async function callAIRaw(prompt, maxTokens){
+  if(aiProvider === 'gemini'){
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`, {
+      method:'POST',
+      headers:{ 'content-type':'application/json', 'x-goog-api-key': sessionApiKey },
+      body: JSON.stringify({ contents:[{ parts:[{ text: prompt }] }] })
+    });
+    if(!res.ok) throw new Error(`Gemini request failed (${res.status}). Check your key and try again.`);
+    const data = await res.json();
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  }
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key': sessionApiKey,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body: JSON.stringify({ model:'claude-sonnet-5', max_tokens: maxTokens || 500, messages:[{ role:'user', content: prompt }] })
+  });
+  if(!res.ok) throw new Error(`Anthropic request failed (${res.status}). Check your key and try again.`);
+  const data = await res.json();
+  const block = (data.content||[]).find(b=>b.type==='text');
+  return block ? block.text : '';
+}
+
+function aiConceptPromptText(desc){
+  return `You are a creative naming consultant in the style of the people who named Stripe, Notion, and Canva. A founder describes their business as: "${desc}".
+
+Generate 15 invented, brandable, single-word company name candidates that fit this business — short, punchy, easy to say out loud, easy to spell after hearing it once. Prefer real-word blends and lightly reshaped real words over pure gibberish. Each candidate: lowercase letters only, no spaces or hyphens, 4-10 characters, not an existing famous brand, not a plain dictionary word used literally.
+
+Reply ONLY as a JSON array, no markdown fences, no commentary:
+[{"name":"lumaro","reason":"under 12 words, why it fits"}, ...]`;
+}
+
+document.getElementById('aiConceptBtn').addEventListener('click', async ()=>{
+  const status = document.getElementById('aiConceptStatus');
+  const desc = document.getElementById('aiConceptInput').value.trim();
+  if(!sessionApiKey){ status.textContent = 'Turn on AI Advisor above and paste a session key first.'; return; }
+  if(!desc){ status.textContent = 'Describe the business first.'; return; }
+  status.textContent = 'Asking AI for candidates...';
+  try{
+    const raw = await callAIRaw(aiConceptPromptText(desc), 1000);
+    const cleaned = raw.replace(/```json|```/g,'').trim();
+    let parsed;
+    try{ parsed = JSON.parse(cleaned); }catch(e){ status.textContent = "AI reply wasn't valid JSON this time — try again."; return; }
+    if(!Array.isArray(parsed)) { status.textContent = 'Unexpected AI reply shape — try again.'; return; }
+
+    let added = 0, rejected = 0;
+    parsed.forEach(item=>{
+      const name = (item.name || '').toString().toLowerCase().replace(/[^a-z]/g,'');
+      if(!name || seen.has(name)) return;
+      // Same gates every deterministically-generated name goes through —
+      // AI creativity doesn't get a pass on quality or safety checks.
+      if(name.length < 3 || name.length > 14){ rejected++; return; }
+      if(!isValidWord(name)){ rejected++; return; }
+      if(hasCloseMatch(name, FAMOUS_BRANDS, 1)){ rejected++; return; }
+      if(hasCloseMatch(name, FAMOUS_IP_TERMS, 1)){ rejected++; return; }
+      if(medicineFlag(name)){ rejected++; return; }
+      seen.add(name);
+      const analysis = analyzeName(name);
+      analysis.aiReason = (item.reason || '').toString().slice(0,140);
+      currentResults.push({ name, family:'AI concept', status:'unknown', analysis });
+      added++;
+    });
+
+    status.textContent = `${added} AI candidates added${rejected ? ` (${rejected} filtered out by the usual gates)` : ''} — checking domains...`;
+    renderGrid(); updateMeta();
+    autoCheckAll();
+  }catch(e){
+    status.textContent = e.message || 'Could not reach the AI provider from this browser.';
+  }
+});
+
+document.getElementById('aiRankBtn').addEventListener('click', async ()=>{
+  const box = document.getElementById('aiRankResult');
+  if(!sessionApiKey){ box.innerHTML = '<div class="info-box">Turn on AI Advisor above and paste a session key first.</div>'; return; }
+  const top = currentResults.filter(r=>r.status==='available').sort((a,b)=>b.analysis.overall-a.analysis.overall).slice(0,12);
+  if(!top.length){ box.innerHTML = "<div class=\"info-box\">Generate and check some names first — this ranks whatever's currently available.</div>"; return; }
+  box.innerHTML = '<span class="count-live">Asking AI to rank the shortlist...</span>';
+  const list = top.map(r=>r.name).join(', ');
+  const prompt = `You are a branding consultant reviewing a shortlist of candidate company names: ${list}.
+Pick your top 3 in order, with a one-sentence reason for each, and name your single overall winner.
+Reply ONLY as JSON, no markdown fences: {"top3":[{"name":"...","reason":"..."}],"winner":"..."}`;
+  try{
+    const raw = await callAIRaw(prompt, 600);
+    const cleaned = raw.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(cleaned);
+    box.innerHTML = `<div class="info-box"><strong>AI's pick: ${parsed.winner}</strong><br><br>` +
+      parsed.top3.map((t,i)=>`${i+1}. <strong>${t.name}</strong> — ${t.reason}`).join('<br>') +
+      '</div>';
+  }catch(e){
+    box.innerHTML = `<div class="warn-box">${e.message || "Could not reach the AI provider or parse its reply."}</div>`;
+  }
+});
 
 /* =========================================================
    PART 13 — CUSTOM TRADEMARK LIST PANEL
