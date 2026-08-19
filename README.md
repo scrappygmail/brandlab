@@ -87,4 +87,12 @@ Open `index.html` in a browser — no server needed for the core engine.
 
 ## License
 
-All rights reserved — public for portfolio/demo viewing only. Not licensed for commercial use, redistribution, or derivative deployment without permission. See `LICENSE`.
+Copyright © 2026. All rights reserved.
+
+This repository is publicly available for portfolio, demonstration, and personal evaluation purposes only.
+
+You may view, study, and reference the source code for non-commercial purposes. However, commercial use, redistribution, sublicensing, resale, or deployment of this project or derivative works is not permitted without prior written permission from the author.
+
+For licensing inquiries or permission to use this project beyond the purposes stated above, please contact the author.
+
+See "LICENSE" (LICENSE) for the complete license terms. `LICENSE`.
